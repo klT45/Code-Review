@@ -1,0 +1,18 @@
+app:
+  name: AI PR Review Assistant
+  github:
+    private-repository-support-enabled: false
+  model:
+    default-provider-id: deepseek
+    providers:
+      - id: deepseek
+        display-name: DeepSeek
+        base-url: https://api.deepseek.com
+        model-id: deepseek-chat
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-pr-review-assistant
