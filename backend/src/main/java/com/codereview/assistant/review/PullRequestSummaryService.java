@@ -9,6 +9,10 @@ import com.codereview.assistant.github.GitHubPullRequestUrlParser;
 import com.codereview.assistant.review.context.ReviewContext;
 import com.codereview.assistant.review.context.ReviewContextBuilder;
 import com.codereview.assistant.review.context.ReviewFileContext;
+import com.codereview.assistant.review.ai.AiReviewRequest;
+import com.codereview.assistant.review.ai.AiReviewResult;
+import com.codereview.assistant.review.ai.AiReviewService;
+import com.codereview.assistant.review.ai.AiRiskItem;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -18,22 +22,30 @@ public class PullRequestSummaryService {
     private final GitHubPullRequestUrlParser urlParser;
     private final GitHubPullRequestClient pullRequestClient;
     private final ReviewContextBuilder reviewContextBuilder;
+    private final AiReviewService aiReviewService;
 
     public PullRequestSummaryService(
             GitHubPullRequestUrlParser urlParser,
             GitHubPullRequestClient pullRequestClient,
-            ReviewContextBuilder reviewContextBuilder
+            ReviewContextBuilder reviewContextBuilder,
+            AiReviewService aiReviewService
     ) {
         this.urlParser = urlParser;
         this.pullRequestClient = pullRequestClient;
         this.reviewContextBuilder = reviewContextBuilder;
+        this.aiReviewService = aiReviewService;
     }
 
     public PullRequestSummaryResponse summarize(String rawPullRequestUrl) {
+        return summarize(rawPullRequestUrl, new AiReviewRequest(null));
+    }
+
+    public PullRequestSummaryResponse summarize(String rawPullRequestUrl, AiReviewRequest aiReviewRequest) {
         GitHubPullRequestUrl pullRequestUrl = urlParser.parse(rawPullRequestUrl);
         GitHubPullRequestInfo info = pullRequestClient.fetch(pullRequestUrl);
         List<GitHubPullRequestFile> changedFiles = pullRequestClient.fetchFiles(pullRequestUrl);
         ReviewContext reviewContext = reviewContextBuilder.build(pullRequestUrl, info, changedFiles);
+        AiReviewResult aiReview = aiReviewService.review(reviewContext, aiReviewRequest.modelConfig());
         List<PullRequestSummaryResponse.PullRequestFileResponse> files = changedFiles
                 .stream()
                 .map(PullRequestSummaryService::toResponse)
@@ -56,7 +68,8 @@ public class PullRequestSummaryService {
                 info.changedFiles(),
                 info.htmlUrl(),
                 files,
-                toResponse(reviewContext)
+                toResponse(reviewContext),
+                toResponse(aiReview)
         );
     }
 
@@ -105,6 +118,32 @@ public class PullRequestSummaryService {
                 file.patchAvailable(),
                 file.truncated(),
                 file.originalPatchLength()
+        );
+    }
+
+    private static PullRequestSummaryResponse.AiReviewResponse toResponse(AiReviewResult review) {
+        return new PullRequestSummaryResponse.AiReviewResponse(
+                review.enabled(),
+                review.generated(),
+                review.providerId(),
+                review.modelId(),
+                review.summary(),
+                review.riskItems().stream()
+                        .map(PullRequestSummaryService::toResponse)
+                        .toList(),
+                review.suggestions(),
+                review.markdown(),
+                review.message()
+        );
+    }
+
+    private static PullRequestSummaryResponse.AiRiskItemResponse toResponse(AiRiskItem item) {
+        return new PullRequestSummaryResponse.AiRiskItemResponse(
+                item.severity(),
+                item.file(),
+                item.title(),
+                item.detail(),
+                item.recommendation()
         );
     }
 }

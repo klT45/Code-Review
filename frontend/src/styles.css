@@ -256,6 +256,312 @@ button:disabled {
   color: var(--red);
 }
 
+.ai-panel {
+  position: relative;
+  overflow: hidden;
+  margin-top: 24px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 22px;
+  background:
+    linear-gradient(135deg, rgba(36, 92, 159, 0.1), rgba(255, 253, 244, 0) 48%),
+    var(--paper);
+  box-shadow: none;
+}
+
+.ai-panel::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 160px;
+  height: 100%;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(23, 32, 27, 0.08) 0 1px,
+      transparent 1px 10px
+    );
+  content: "";
+}
+
+.ai-panel.generated {
+  border-color: rgba(29, 107, 79, 0.72);
+}
+
+.ai-panel.not-ready {
+  border-color: rgba(185, 115, 23, 0.56);
+  background:
+    linear-gradient(135deg, rgba(185, 115, 23, 0.11), rgba(255, 253, 244, 0) 48%),
+    var(--paper);
+}
+
+.ai-header,
+.ai-section-header,
+.markdown-header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ai-header h2,
+.ai-section h3,
+.markdown-header h3 {
+  margin: 0;
+}
+
+.ai-state,
+.ai-model-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #e8efe0;
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.not-ready .ai-state {
+  background: #fbefd9;
+}
+
+.ai-model-line {
+  position: relative;
+  margin-top: 12px;
+  border-color: rgba(23, 32, 27, 0.22);
+  background: rgba(247, 245, 237, 0.82);
+  color: var(--muted);
+}
+
+.ai-model-line strong {
+  color: var(--ink);
+}
+
+.ai-summary-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid rgba(36, 92, 159, 0.28);
+  border-radius: 8px;
+  padding: 16px;
+  background: #eaf0f7;
+}
+
+.ai-summary-block svg {
+  color: var(--blue);
+}
+
+.ai-summary-block p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.03rem;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.risk-overview {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.risk-overview .metric:first-child {
+  border-left-color: var(--red);
+}
+
+.risk-overview .metric:nth-child(2) {
+  border-left-color: var(--amber);
+}
+
+.risk-overview .metric:nth-child(3) {
+  border-left-color: var(--green);
+}
+
+.ai-section {
+  position: relative;
+  margin-top: 18px;
+  border-top: 1px solid rgba(23, 32, 27, 0.16);
+  padding-top: 16px;
+}
+
+.markdown-box,
+.ai-config-note {
+  position: relative;
+  margin-top: 18px;
+  border: 1px solid rgba(23, 32, 27, 0.16);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(255, 253, 244, 0.78);
+}
+
+.ai-section-header span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.risk-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.risk-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f7f5ed;
+}
+
+.risk-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.risk-title-row h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.severity-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.severity-tag.high {
+  border-color: rgba(200, 77, 53, 0.36);
+  color: var(--red);
+  background: #fff0eb;
+}
+
+.severity-tag.medium {
+  border-color: rgba(185, 115, 23, 0.38);
+  color: #7a4b00;
+  background: #fbefd9;
+}
+
+.severity-tag.low {
+  border-color: rgba(29, 107, 79, 0.34);
+  color: var(--green);
+  background: #eef6e9;
+}
+
+.severity-tag.unknown {
+  color: var(--muted);
+  background: #f7f5ed;
+}
+
+.risk-file {
+  margin: 10px 0 8px;
+  color: var(--blue);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.84rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.risk-item p:not(.risk-file) {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.risk-recommendation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(23, 32, 27, 0.12);
+  padding-top: 12px;
+  line-height: 1.55;
+}
+
+.risk-recommendation strong {
+  color: var(--green);
+}
+
+.suggestion-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.empty-review,
+.ai-config-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.empty-review {
+  margin-top: 14px;
+  min-height: 42px;
+}
+
+.empty-review svg {
+  color: var(--green);
+}
+
+.ai-config-note {
+  align-items: flex-start;
+  border-color: rgba(185, 115, 23, 0.36);
+  background: #fbefd9;
+  color: #6e4100;
+}
+
+.ai-config-note p {
+  margin: 4px 0 0;
+  line-height: 1.55;
+}
+
+.copy-button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.84rem;
+}
+
+.markdown-box pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 14px 0 0;
+  border: 1px solid rgba(23, 32, 27, 0.2);
+  border-radius: 8px;
+  padding: 14px;
+  color: #202720;
+  background:
+    linear-gradient(90deg, rgba(29, 107, 79, 0.08) 0 3px, transparent 3px),
+    #f7f5ed;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .files-panel {
   position: relative;
   overflow: hidden;
@@ -618,12 +924,16 @@ button:disabled {
   .input-row,
   .file-flow,
   .file-row,
+  .risk-overview,
   .context-grid {
     grid-template-columns: 1fr;
   }
 
   .masthead,
   .files-header,
+  .ai-header,
+  .ai-section-header,
+  .markdown-header,
   .context-header {
     display: grid;
   }
@@ -650,7 +960,22 @@ button:disabled {
     justify-content: flex-start;
   }
 
+  .risk-recommendation {
+    grid-template-columns: 1fr;
+  }
+
   button {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-node,
+  .spin {
+    animation: none;
+  }
+
+  .file-row {
+    transition: none;
   }
 }

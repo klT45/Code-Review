@@ -43,7 +43,8 @@ public record AppProperties(
             String id,
             String displayName,
             String baseUrl,
-            String modelId
+            String modelId,
+            String apiKeyEnv
     ) {
     }
 
@@ -52,7 +53,8 @@ public record AppProperties(
                 "deepseek",
                 "DeepSeek",
                 "https://api.deepseek.com",
-                "deepseek-chat"
+                "deepseek-chat",
+                "DEEPSEEK_API_KEY"
         );
     }
 }

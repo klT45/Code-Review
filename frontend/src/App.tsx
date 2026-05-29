@@ -2,12 +2,17 @@ import { CSSProperties, FormEvent, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
+  CheckCircle2,
+  ClipboardCopy,
   ExternalLink,
   FileCode2,
   Files,
   GitPullRequestArrow,
   Loader2,
   ServerCog,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 
 type ReviewContext = {
@@ -52,6 +57,26 @@ type PullRequestFile = {
   previousFilename: string | null;
 };
 
+type AiRiskItem = {
+  severity: string;
+  file: string;
+  title: string;
+  detail: string;
+  recommendation: string;
+};
+
+type AiReview = {
+  enabled: boolean;
+  generated: boolean;
+  providerId: string;
+  modelId: string;
+  summary: string;
+  riskItems: AiRiskItem[];
+  suggestions: string[];
+  markdown: string;
+  message: string;
+};
+
 type PullRequestSummary = {
   owner: string;
   repository: string;
@@ -70,6 +95,7 @@ type PullRequestSummary = {
   htmlUrl: string;
   files: PullRequestFile[];
   reviewContext: ReviewContext;
+  aiReview: AiReview | null;
 };
 
 type ApiError = {
@@ -86,6 +112,7 @@ export function App() {
   const [summary, setSummary] = useState<PullRequestSummary | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   const changeSize = useMemo(() => {
     if (!summary) {
@@ -124,10 +151,20 @@ export function App() {
     );
   }, [summary]);
 
+  const reviewStats = useMemo(() => {
+    const riskItems = summary?.aiReview?.riskItems ?? [];
+    return {
+      high: riskItems.filter((item) => item.severity === 'high').length,
+      medium: riskItems.filter((item) => item.severity === 'medium').length,
+      low: riskItems.filter((item) => item.severity === 'low').length,
+    };
+  }, [summary]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSummary(null);
+    setCopyState('idle');
 
     if (!prUrl.trim()) {
       setError('请输入 GitHub PR 链接。');
@@ -188,12 +225,12 @@ export function App() {
                 ) : (
                   <GitPullRequestArrow aria-hidden="true" size={18} />
                 )}
-                {isLoading ? '获取中' : '获取摘要'}
+                {isLoading ? '分析中' : '分析 PR'}
               </button>
             </div>
           </form>
           <p className="hint">
-            当前支持公开 GitHub PR 的基础摘要与变更文件获取。后续会继续接入私有仓库 Token 和 AI Review。
+            当前支持公开 GitHub PR 的基础摘要、变更文件获取与 AI Review。后续会继续接入私有仓库 Token 和模型切换。
           </p>
           {error && (
             <div className="alert" role="alert">
@@ -235,6 +272,125 @@ export function App() {
                 <span className="deletions">-{summary.deletions}</span>
               </div>
             </section>
+
+            {summary.aiReview && (
+              <section className={`ai-panel ${summary.aiReview.generated ? 'generated' : 'not-ready'}`} aria-label="AI Review 结果">
+                <div className="ai-header">
+                  <div>
+                    <p className="eyebrow">AI Review</p>
+                    <h2>智能 Review</h2>
+                  </div>
+                  <div className="ai-state">
+                    {summary.aiReview.generated ? (
+                      <ShieldCheck aria-hidden="true" size={18} />
+                    ) : (
+                      <ShieldAlert aria-hidden="true" size={18} />
+                    )}
+                    {summary.aiReview.generated ? '已生成' : '等待配置'}
+                  </div>
+                </div>
+
+                <div className="ai-model-line" aria-label="当前模型">
+                  <span>{summary.aiReview.providerId || 'default'}</span>
+                  <strong>{summary.aiReview.modelId || '未配置模型'}</strong>
+                </div>
+
+                {summary.aiReview.generated ? (
+                  <>
+                    <div className="ai-summary-block">
+                      <Sparkles aria-hidden="true" size={20} />
+                      <p>{summary.aiReview.summary || 'AI Review 已生成，但没有返回摘要。'}</p>
+                    </div>
+
+                    <div className="risk-overview" aria-label="风险等级统计">
+                      <SummaryMetric label="高风险" value={reviewStats.high.toString()} />
+                      <SummaryMetric label="中风险" value={reviewStats.medium.toString()} />
+                      <SummaryMetric label="低风险" value={reviewStats.low.toString()} />
+                    </div>
+
+                    <div className="ai-section">
+                      <div className="ai-section-header">
+                        <h3>风险代码识别</h3>
+                        <span>{summary.aiReview.riskItems.length} 项</span>
+                      </div>
+
+                      {summary.aiReview.riskItems.length > 0 ? (
+                        <div className="risk-list">
+                          {summary.aiReview.riskItems.map((item, index) => (
+                            <article className="risk-item" key={`${item.file}-${item.title}-${index}`}>
+                              <div className="risk-title-row">
+                                <span className={`severity-tag ${severityTone(item.severity)}`}>
+                                  {severityLabel(item.severity)}
+                                </span>
+                                <h4>{item.title || '未命名风险'}</h4>
+                              </div>
+                              <p className="risk-file">{item.file || '未指定文件'}</p>
+                              <p>{item.detail || '模型未返回风险详情。'}</p>
+                              <div className="risk-recommendation">
+                                <strong>建议</strong>
+                                <span>{item.recommendation || '模型未返回修复建议。'}</span>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-review">
+                          <CheckCircle2 aria-hidden="true" size={19} />
+                          未识别出明显风险。
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="ai-section">
+                      <div className="ai-section-header">
+                        <h3>Review 建议</h3>
+                        <span>{summary.aiReview.suggestions.length} 条</span>
+                      </div>
+                      {summary.aiReview.suggestions.length > 0 ? (
+                        <ul className="suggestion-list">
+                          {summary.aiReview.suggestions.map((suggestion, index) => (
+                            <li key={`${suggestion}-${index}`}>{suggestion}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="empty-review">
+                          <CheckCircle2 aria-hidden="true" size={19} />
+                          暂无额外建议。
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="markdown-box">
+                      <div className="markdown-header">
+                        <h3>Markdown</h3>
+                        <button
+                          className="copy-button"
+                          type="button"
+                          disabled={!summary.aiReview.markdown}
+                          onClick={() => copyMarkdown(summary.aiReview?.markdown ?? '')}
+                        >
+                          {copyState === 'copied' ? (
+                            <CheckCircle2 aria-hidden="true" size={17} />
+                          ) : (
+                            <ClipboardCopy aria-hidden="true" size={17} />
+                          )}
+                          {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制 Markdown'}
+                        </button>
+                      </div>
+                      <pre>{summary.aiReview.markdown || 'AI Review 未返回 Markdown 内容。'}</pre>
+                    </div>
+                  </>
+                ) : (
+                  <div className="ai-config-note" role="status">
+                    <AlertTriangle aria-hidden="true" size={19} />
+                    <div>
+                      <strong>AI Review 未生成</strong>
+                      <p>{summary.aiReview.message || '请配置模型 API Key 后重新分析。'}</p>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
 
             <section className="files-panel" aria-label="PR 变更文件">
               <div className="files-header">
@@ -348,6 +504,21 @@ export function App() {
       </section>
     </main>
   );
+
+  async function copyMarkdown(markdown: string) {
+    if (!markdown) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopyState('copied');
+      window.setTimeout(() => setCopyState('idle'), 1800);
+    } catch {
+      setCopyState('failed');
+      window.setTimeout(() => setCopyState('idle'), 1800);
+    }
+  }
 }
 
 function SummaryMetric({ label, value }: { label: string; value: string }) {
@@ -378,4 +549,22 @@ function statusTone(status: string) {
     renamed: 'renamed',
   };
   return tones[status] ?? 'changed';
+}
+
+function severityLabel(severity: string) {
+  const labels: Record<string, string> = {
+    high: '高风险',
+    medium: '中风险',
+    low: '低风险',
+  };
+  return labels[severity] ?? (severity || '未知');
+}
+
+function severityTone(severity: string) {
+  const tones: Record<string, string> = {
+    high: 'high',
+    medium: 'medium',
+    low: 'low',
+  };
+  return tones[severity] ?? 'unknown';
 }
