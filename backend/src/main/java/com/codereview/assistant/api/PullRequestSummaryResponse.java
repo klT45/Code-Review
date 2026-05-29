@@ -19,7 +19,8 @@ public record PullRequestSummaryResponse(
         int changedFiles,
         String htmlUrl,
         List<PullRequestFileResponse> files,
-        ReviewContextResponse reviewContext
+        ReviewContextResponse reviewContext,
+        AiReviewResponse aiReview
 ) {
 
     public record PullRequestFileResponse(
@@ -65,6 +66,28 @@ public record PullRequestSummaryResponse(
             boolean patchAvailable,
             boolean truncated,
             int originalPatchLength
+    ) {
+    }
+
+    public record AiReviewResponse(
+            boolean enabled,
+            boolean generated,
+            String providerId,
+            String modelId,
+            String summary,
+            List<AiRiskItemResponse> riskItems,
+            List<String> suggestions,
+            String markdown,
+            String message
+    ) {
+    }
+
+    public record AiRiskItemResponse(
+            String severity,
+            String file,
+            String title,
+            String detail,
+            String recommendation
     ) {
     }
 }

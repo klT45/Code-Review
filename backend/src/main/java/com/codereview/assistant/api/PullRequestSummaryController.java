@@ -1,5 +1,7 @@
 package com.codereview.assistant.api;
 
+import com.codereview.assistant.ai.AiModelConfigInput;
+import com.codereview.assistant.review.ai.AiReviewRequest;
 import com.codereview.assistant.review.PullRequestSummaryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -20,11 +22,12 @@ public class PullRequestSummaryController {
 
     @PostMapping("/summary")
     public PullRequestSummaryResponse summarize(@Valid @RequestBody PullRequestSummaryRequest request) {
-        return summaryService.summarize(request.prUrl());
+        return summaryService.summarize(request.prUrl(), new AiReviewRequest(request.modelConfig()));
     }
 
     public record PullRequestSummaryRequest(
-            @NotBlank(message = "GitHub PR URL is required.") String prUrl
+            @NotBlank(message = "GitHub PR URL is required.") String prUrl,
+            AiModelConfigInput modelConfig
     ) {
     }
 }

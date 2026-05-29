@@ -23,6 +23,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import com.codereview.assistant.review.PullRequestSummaryService;
+import com.codereview.assistant.review.ai.AiReviewResult;
+import com.codereview.assistant.review.ai.AiReviewService;
+import com.codereview.assistant.review.ai.AiRiskItem;
 import com.codereview.assistant.review.context.ReviewContextBuilder;
 
 @WebMvcTest(PullRequestSummaryController.class)
@@ -39,6 +42,9 @@ class PullRequestSummaryControllerTests {
 
     @MockBean
     private GitHubPullRequestClient pullRequestClient;
+
+    @MockBean
+    private AiReviewService aiReviewService;
 
     @Test
     void returnsPullRequestSummary() throws Exception {
@@ -81,6 +87,20 @@ class PullRequestSummaryControllerTests {
                         null
                 )
         ));
+        when(aiReviewService.review(any(), any())).thenReturn(AiReviewResult.generated(
+                "deepseek",
+                "deepseek-chat",
+                "新增 PR 摘要接口。",
+                List.of(new AiRiskItem(
+                        "medium",
+                        "src/main/java/ReviewService.java",
+                        "需要关注异常处理",
+                        "新增逻辑可能缺少上游错误兜底。",
+                        "补充失败场景测试。"
+                )),
+                List.of("补充异常路径测试。"),
+                "## AI Review\n- 新增 PR 摘要接口。"
+        ));
 
         mockMvc.perform(post("/api/pull-requests/summary")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -104,7 +124,12 @@ class PullRequestSummaryControllerTests {
                 .andExpect(jsonPath("$.reviewContext.stats.filesWithPatch").value(1))
                 .andExpect(jsonPath("$.reviewContext.files[0].filename").value("src/main/java/ReviewService.java"))
                 .andExpect(jsonPath("$.reviewContext.files[0].patchAvailable").value(true))
-                .andExpect(jsonPath("$.reviewContext.promptText", containsString("PR REVIEW CONTEXT")));
+                .andExpect(jsonPath("$.reviewContext.promptText", containsString("PR REVIEW CONTEXT")))
+                .andExpect(jsonPath("$.aiReview.generated").value(true))
+                .andExpect(jsonPath("$.aiReview.providerId").value("deepseek"))
+                .andExpect(jsonPath("$.aiReview.summary").value("新增 PR 摘要接口。"))
+                .andExpect(jsonPath("$.aiReview.riskItems[0].severity").value("medium"))
+                .andExpect(jsonPath("$.aiReview.markdown", containsString("AI Review")));
     }
 
     @Test

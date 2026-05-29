@@ -2,6 +2,7 @@ package com.codereview.assistant.api;
 
 import com.codereview.assistant.github.GitHubApiException;
 import com.codereview.assistant.ai.InvalidModelConfigurationException;
+import com.codereview.assistant.review.ai.AiReviewGenerationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -36,5 +37,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidModelConfigurationException.class)
     public ResponseEntity<ApiErrorResponse> handleModelConfigurationError(InvalidModelConfigurationException exception) {
         return ResponseEntity.badRequest().body(ApiErrorResponse.of("INVALID_MODEL_CONFIG", exception.getMessage()));
+    }
+
+    @ExceptionHandler(AiReviewGenerationException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiReviewError(AiReviewGenerationException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiErrorResponse.of("AI_REVIEW_ERROR", exception.getMessage()));
     }
 }
