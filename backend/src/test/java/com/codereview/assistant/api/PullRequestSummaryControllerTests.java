@@ -23,9 +23,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import com.codereview.assistant.review.PullRequestSummaryService;
+import com.codereview.assistant.review.context.ReviewContextBuilder;
 
 @WebMvcTest(PullRequestSummaryController.class)
-@Import({ApiExceptionHandler.class, PullRequestSummaryService.class, GitHubPullRequestUrlParser.class})
+@Import({
+        ApiExceptionHandler.class,
+        PullRequestSummaryService.class,
+        GitHubPullRequestUrlParser.class,
+        ReviewContextBuilder.class
+})
 class PullRequestSummaryControllerTests {
 
     @Autowired
@@ -93,7 +99,12 @@ class PullRequestSummaryControllerTests {
                 .andExpect(jsonPath("$.files[0].additions").value(25))
                 .andExpect(jsonPath("$.files[0].deletions").value(4))
                 .andExpect(jsonPath("$.files[0].patch").value("@@ -1,3 +1,4 @@"))
-                .andExpect(jsonPath("$.files[1].filename").value("src/test/java/ReviewServiceTests.java"));
+                .andExpect(jsonPath("$.files[1].filename").value("src/test/java/ReviewServiceTests.java"))
+                .andExpect(jsonPath("$.reviewContext.stats.totalFiles").value(2))
+                .andExpect(jsonPath("$.reviewContext.stats.filesWithPatch").value(1))
+                .andExpect(jsonPath("$.reviewContext.files[0].filename").value("src/main/java/ReviewService.java"))
+                .andExpect(jsonPath("$.reviewContext.files[0].patchAvailable").value(true))
+                .andExpect(jsonPath("$.reviewContext.promptText", containsString("PR REVIEW CONTEXT")));
     }
 
     @Test

@@ -10,6 +10,35 @@ import {
   ServerCog,
 } from 'lucide-react';
 
+type ReviewContext = {
+  stats: ReviewContextStats;
+  files: ReviewFileContext[];
+  truncationNotes: string[];
+  promptText: string;
+};
+
+type ReviewContextStats = {
+  totalFiles: number;
+  filesWithPatch: number;
+  truncatedFiles: number;
+  totalPatchCharacters: number;
+  includedPatchCharacters: number;
+  promptCharacters: number;
+  maxPatchCharactersPerFile: number;
+  maxPromptCharacters: number;
+};
+
+type ReviewFileContext = {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patchAvailable: boolean;
+  truncated: boolean;
+  originalPatchLength: number;
+};
+
 type PullRequestFile = {
   filename: string;
   status: string;
@@ -40,6 +69,7 @@ type PullRequestSummary = {
   changedFiles: number;
   htmlUrl: string;
   files: PullRequestFile[];
+  reviewContext: ReviewContext;
 };
 
 type ApiError = {
@@ -83,6 +113,15 @@ export function App() {
       largestFile,
       visibleTrackFiles: files.slice(0, maxTrackItems),
     };
+  }, [summary]);
+
+  const contextCoverage = useMemo(() => {
+    if (!summary || summary.reviewContext.stats.totalPatchCharacters === 0) {
+      return 0;
+    }
+    return Math.round(
+      (summary.reviewContext.stats.includedPatchCharacters / summary.reviewContext.stats.totalPatchCharacters) * 100
+    );
   }, [summary]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -257,6 +296,52 @@ export function App() {
                   </article>
                 ))}
               </div>
+            </section>
+
+            <section className="context-panel" aria-label="Review 上下文">
+              <div className="context-header">
+                <div>
+                  <p className="eyebrow">Review context</p>
+                  <h2>模型上下文</h2>
+                </div>
+                <div className="context-meter" aria-label={`上下文长度 ${summary.reviewContext.stats.promptCharacters} 字符`}>
+                  <span
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (summary.reviewContext.stats.promptCharacters
+                          / summary.reviewContext.stats.maxPromptCharacters) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="context-grid">
+                <SummaryMetric label="上下文字符" value={summary.reviewContext.stats.promptCharacters.toString()} />
+                <SummaryMetric label="Patch 覆盖" value={`${contextCoverage}%`} />
+                <SummaryMetric label="可用 Patch" value={`${summary.reviewContext.stats.filesWithPatch}/${summary.reviewContext.stats.totalFiles}`} />
+                <SummaryMetric label="截断文件" value={summary.reviewContext.stats.truncatedFiles.toString()} />
+              </div>
+
+              <div className="context-note">
+                <strong>上下文策略</strong>
+                <p>
+                  每个文件最多保留 {summary.reviewContext.stats.maxPatchCharactersPerFile} 个 patch 字符，
+                  总 prompt 最多保留 {summary.reviewContext.stats.maxPromptCharacters} 个字符。后续 AI Review 将基于该结构化上下文生成总结、风险识别和建议。
+                </p>
+              </div>
+
+              {summary.reviewContext.truncationNotes.length > 0 && (
+                <div className="context-warnings">
+                  <strong>截断与缺失说明</strong>
+                  <ul>
+                    {summary.reviewContext.truncationNotes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </section>
           </>
         )}

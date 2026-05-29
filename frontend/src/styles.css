@@ -105,7 +105,8 @@ button {
 
 .review-panel,
 .summary-panel,
-.files-panel {
+.files-panel,
+.context-panel {
   border: 1px solid var(--ink);
   border-radius: 8px;
   padding: 22px;
@@ -170,7 +171,8 @@ button:disabled {
 }
 
 .summary-header,
-.files-header {
+.files-header,
+.context-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -463,6 +465,72 @@ button:disabled {
   background: #eef6e9;
 }
 
+.context-panel {
+  margin-top: 24px;
+  background:
+    linear-gradient(135deg, rgba(232, 239, 224, 0.7), rgba(255, 253, 244, 0.9)),
+    var(--paper);
+  box-shadow: none;
+}
+
+.context-meter {
+  width: min(260px, 36vw);
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: #f7f5ed;
+}
+
+.context-meter span {
+  display: block;
+  height: 100%;
+  border-right: 1px solid var(--ink);
+  background: linear-gradient(90deg, var(--green), var(--blue));
+}
+
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.context-note,
+.context-warnings {
+  margin-top: 16px;
+  border: 1px solid rgba(23, 32, 27, 0.16);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 253, 244, 0.72);
+}
+
+.context-note strong,
+.context-warnings strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.context-note p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.context-warnings {
+  border-color: rgba(185, 115, 23, 0.36);
+  background: #fbefd9;
+}
+
+.context-warnings ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #6e4100;
+  line-height: 1.5;
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }
@@ -549,12 +617,14 @@ button:disabled {
   .masthead,
   .input-row,
   .file-flow,
-  .file-row {
+  .file-row,
+  .context-grid {
     grid-template-columns: 1fr;
   }
 
   .masthead,
-  .files-header {
+  .files-header,
+  .context-header {
     display: grid;
   }
 
@@ -570,6 +640,10 @@ button:disabled {
 
   .summary-header {
     display: grid;
+  }
+
+  .context-meter {
+    width: 100%;
   }
 
   .file-meta {
