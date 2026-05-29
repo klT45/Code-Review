@@ -264,6 +264,18 @@ export function App() {
     };
   }, [summary]);
 
+  const reviewMarkdown = useMemo(() => {
+    if (!summary?.aiReview?.generated) {
+      return '';
+    }
+    if (summary.aiReview.markdown?.trim()) {
+      return summary.aiReview.markdown;
+    }
+    return buildReviewMarkdown(summary);
+  }, [summary]);
+
+  const markdownSourceLabel = summary?.aiReview?.markdown?.trim() ? '模型生成' : '结构化生成';
+
   const selectedProvider = useMemo(() => {
     return modelOptions?.providers.find((provider) => provider.id === modelConfig.providerId) ?? null;
   }, [modelConfig.providerId, modelOptions]);
@@ -707,11 +719,12 @@ export function App() {
                     <div className="markdown-box">
                       <div className="markdown-header">
                         <h3>Markdown</h3>
+                        <span className="markdown-source">{markdownSourceLabel}</span>
                         <button
                           className="copy-button"
                           type="button"
-                          disabled={!summary.aiReview.markdown}
-                          onClick={() => copyMarkdown(summary.aiReview?.markdown ?? '')}
+                          disabled={!reviewMarkdown}
+                          onClick={() => copyMarkdown(reviewMarkdown)}
                         >
                           {copyState === 'copied' ? (
                             <CheckCircle2 aria-hidden="true" size={17} />
@@ -721,7 +734,7 @@ export function App() {
                           {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制 Markdown'}
                         </button>
                       </div>
-                      <pre>{summary.aiReview.markdown || 'AI Review 未返回 Markdown 内容。'}</pre>
+                      <pre>{reviewMarkdown || 'AI Review 暂无可复制 Markdown 内容。'}</pre>
                     </div>
                   </>
                 ) : (
@@ -979,6 +992,64 @@ function confidenceTone(confidence: string) {
     low: 'low',
   };
   return tones[confidence] ?? 'unknown';
+}
+
+function buildReviewMarkdown(summary: PullRequestSummary) {
+  const review = summary.aiReview;
+  if (!review) {
+    return '';
+  }
+
+  const lines = [
+    '## AI Review',
+    '',
+    `**PR**: ${summary.owner}/${summary.repository}#${summary.pullNumber}`,
+    `**模型**: ${review.providerId || 'default'} / ${review.modelId || '未配置模型'}`,
+    '',
+    '### 变更总结',
+    review.summary || 'AI Review 未返回摘要。',
+    '',
+    '### 风险代码识别',
+  ];
+
+  if (review.riskItems.length === 0) {
+    lines.push('- 未识别出明确风险。');
+  } else {
+    review.riskItems.forEach((item, index) => {
+      lines.push(
+        `${index + 1}. **${severityLabel(item.severity)} / ${confidenceLabel(item.confidence)}** ${item.title || '未命名风险'}`,
+        `   - 文件：\`${item.file || '未指定文件'}\``,
+        `   - 详情：${item.detail || '模型未返回风险详情。'}`,
+        `   - 依据：${item.evidence || '模型未返回明确依据。'}`,
+        `   - 影响：${item.impact || '模型未返回影响说明。'}`,
+        `   - 建议：${item.recommendation || '模型未返回修复建议。'}`
+      );
+      if (item.needsHumanReview) {
+        lines.push('   - 标记：需要人工确认');
+      }
+    });
+  }
+
+  appendMarkdownGroup(lines, '### 必须修改', review.requiredActions, '暂无必须修改项。');
+  appendMarkdownGroup(lines, '### 建议优化', review.suggestions, '暂无建议优化项。');
+  appendMarkdownGroup(lines, '### 后续处理', review.followUpItems, '暂无后续处理项。');
+
+  if ((review.limitations?.length ?? 0) > 0) {
+    appendMarkdownGroup(lines, '### 判断限制', review.limitations, '');
+  }
+
+  return lines.join('\n').trim();
+}
+
+function appendMarkdownGroup(lines: string[], title: string, items: string[] = [], emptyText: string) {
+  lines.push('', title);
+  if (items.length === 0) {
+    if (emptyText) {
+      lines.push(`- ${emptyText}`);
+    }
+    return;
+  }
+  items.forEach((item) => lines.push(`- ${item}`));
 }
 
 function buildModelConfigPayload(modelConfig: ModelFormState) {
