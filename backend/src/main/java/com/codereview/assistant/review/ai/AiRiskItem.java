@@ -5,6 +5,10 @@ public record AiRiskItem(
         String file,
         String title,
         String detail,
+        String evidence,
+        String impact,
+        String confidence,
+        boolean needsHumanReview,
         String recommendation
 ) {
 }

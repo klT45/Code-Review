@@ -21,8 +21,11 @@ public class AiReviewResponseParser {
                     providerId,
                     modelId,
                     safe(payload.summary()),
-                    safeList(payload.riskItems()),
+                    safeRiskItems(payload.riskItems()),
+                    safeList(payload.requiredActions()),
                     safeList(payload.suggestions()),
+                    safeList(payload.followUpItems()),
+                    safeList(payload.limitations()),
                     safe(payload.markdown())
             );
         } catch (JsonProcessingException exception) {
@@ -54,10 +57,32 @@ public class AiReviewResponseParser {
         return values == null ? List.of() : values;
     }
 
+    private static List<AiRiskItem> safeRiskItems(List<AiRiskItem> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+                .map(item -> new AiRiskItem(
+                        safe(item.severity()),
+                        safe(item.file()),
+                        safe(item.title()),
+                        safe(item.detail()),
+                        safe(item.evidence()),
+                        safe(item.impact()),
+                        safe(item.confidence()),
+                        item.needsHumanReview(),
+                        safe(item.recommendation())
+                ))
+                .toList();
+    }
+
     private record AiReviewPayload(
             String summary,
             List<AiRiskItem> riskItems,
+            List<String> requiredActions,
             List<String> suggestions,
+            List<String> followUpItems,
+            List<String> limitations,
             String markdown
     ) {
     }

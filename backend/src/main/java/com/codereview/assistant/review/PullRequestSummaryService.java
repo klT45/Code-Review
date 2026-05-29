@@ -139,7 +139,10 @@ public class PullRequestSummaryService {
                 review.riskItems().stream()
                         .map(PullRequestSummaryService::toResponse)
                         .toList(),
+                review.requiredActions(),
                 review.suggestions(),
+                review.followUpItems(),
+                review.limitations(),
                 review.markdown(),
                 review.message()
         );
@@ -151,6 +154,10 @@ public class PullRequestSummaryService {
                 item.file(),
                 item.title(),
                 item.detail(),
+                item.evidence(),
+                item.impact(),
+                item.confidence(),
+                item.needsHumanReview(),
                 item.recommendation()
         );
     }

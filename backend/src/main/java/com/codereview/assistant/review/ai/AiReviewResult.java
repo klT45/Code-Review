@@ -9,7 +9,10 @@ public record AiReviewResult(
         String modelId,
         String summary,
         List<AiRiskItem> riskItems,
+        List<String> requiredActions,
         List<String> suggestions,
+        List<String> followUpItems,
+        List<String> limitations,
         String markdown,
         String message
 ) {
@@ -23,6 +26,9 @@ public record AiReviewResult(
                 "",
                 List.of(),
                 List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
                 "",
                 message
         );
@@ -33,7 +39,10 @@ public record AiReviewResult(
             String modelId,
             String summary,
             List<AiRiskItem> riskItems,
+            List<String> requiredActions,
             List<String> suggestions,
+            List<String> followUpItems,
+            List<String> limitations,
             String markdown
     ) {
         return new AiReviewResult(
@@ -43,7 +52,10 @@ public record AiReviewResult(
                 modelId,
                 summary,
                 riskItems,
+                requiredActions,
                 suggestions,
+                followUpItems,
+                limitations,
                 markdown,
                 "AI Review generated."
         );
