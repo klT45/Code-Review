@@ -10,9 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.codereview.assistant.github.GitHubApiException;
 import com.codereview.assistant.github.GitHubPullRequestClient;
+import com.codereview.assistant.github.GitHubPullRequestFile;
 import com.codereview.assistant.github.GitHubPullRequestInfo;
 import com.codereview.assistant.github.GitHubPullRequestUrl;
 import com.codereview.assistant.github.GitHubPullRequestUrlParser;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -47,6 +49,32 @@ class PullRequestSummaryControllerTests {
                 4,
                 "https://github.com/openai/openai-java/pull/42"
         ));
+        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class))).thenReturn(List.of(
+                new GitHubPullRequestFile(
+                        "src/main/java/ReviewService.java",
+                        "modified",
+                        25,
+                        4,
+                        29,
+                        "@@ -1,3 +1,4 @@",
+                        "https://github.com/openai/openai-java/blob/main/src/main/java/ReviewService.java",
+                        "https://github.com/openai/openai-java/raw/main/src/main/java/ReviewService.java",
+                        "https://api.github.com/repos/openai/openai-java/contents/src/main/java/ReviewService.java",
+                        null
+                ),
+                new GitHubPullRequestFile(
+                        "src/test/java/ReviewServiceTests.java",
+                        "added",
+                        80,
+                        0,
+                        80,
+                        "",
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        ));
 
         mockMvc.perform(post("/api/pull-requests/summary")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -59,7 +87,13 @@ class PullRequestSummaryControllerTests {
                 .andExpect(jsonPath("$.pullNumber").value(42))
                 .andExpect(jsonPath("$.title").value("Add summary endpoint"))
                 .andExpect(jsonPath("$.author").value("octocat"))
-                .andExpect(jsonPath("$.changedFiles").value(4));
+                .andExpect(jsonPath("$.changedFiles").value(4))
+                .andExpect(jsonPath("$.files[0].filename").value("src/main/java/ReviewService.java"))
+                .andExpect(jsonPath("$.files[0].status").value("modified"))
+                .andExpect(jsonPath("$.files[0].additions").value(25))
+                .andExpect(jsonPath("$.files[0].deletions").value(4))
+                .andExpect(jsonPath("$.files[0].patch").value("@@ -1,3 +1,4 @@"))
+                .andExpect(jsonPath("$.files[1].filename").value("src/test/java/ReviewServiceTests.java"));
     }
 
     @Test

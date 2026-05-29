@@ -1,5 +1,7 @@
 package com.codereview.assistant.api;
 
+import java.util.List;
+
 public record PullRequestSummaryResponse(
         String owner,
         String repository,
@@ -15,6 +17,21 @@ public record PullRequestSummaryResponse(
         int additions,
         int deletions,
         int changedFiles,
-        String htmlUrl
+        String htmlUrl,
+        List<PullRequestFileResponse> files
 ) {
+
+    public record PullRequestFileResponse(
+            String filename,
+            String status,
+            int additions,
+            int deletions,
+            int changes,
+            String patch,
+            String blobUrl,
+            String rawUrl,
+            String contentsUrl,
+            String previousFilename
+    ) {
+    }
 }

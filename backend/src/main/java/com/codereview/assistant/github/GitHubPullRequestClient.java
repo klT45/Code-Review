@@ -1,6 +1,9 @@
 package com.codereview.assistant.github;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +15,7 @@ import org.springframework.web.client.RestClientResponseException;
 public class GitHubPullRequestClient {
 
     private static final String GITHUB_API_BASE_URL = "https://api.github.com";
+    private static final int FILES_PAGE_SIZE = 100;
 
     private final RestClient restClient;
 
@@ -31,17 +35,15 @@ public class GitHubPullRequestClient {
 
     public GitHubPullRequestInfo fetch(GitHubPullRequestUrl pullRequestUrl) {
         try {
-            RestClient.RequestHeadersSpec<?> request = restClient.get()
-                    .uri(
-                            "/repos/{owner}/{repo}/pulls/{pullNumber}",
-                            pullRequestUrl.owner(),
-                            pullRequestUrl.repository(),
-                            pullRequestUrl.pullNumber()
-                    );
-            String token = System.getenv("GITHUB_TOKEN");
-            if (token != null && !token.isBlank()) {
-                request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-            }
+            RestClient.RequestHeadersSpec<?> request = authenticatedRequest(
+                    restClient.get()
+                            .uri(
+                                    "/repos/{owner}/{repo}/pulls/{pullNumber}",
+                                    pullRequestUrl.owner(),
+                                    pullRequestUrl.repository(),
+                                    pullRequestUrl.pullNumber()
+                            )
+            );
 
             PullRequestResponse response = request
                     .retrieve()
@@ -52,6 +54,46 @@ public class GitHubPullRequestClient {
             }
 
             return response.toInfo();
+        } catch (RestClientResponseException exception) {
+            throw toGitHubApiException(exception);
+        }
+    }
+
+    public List<GitHubPullRequestFile> fetchFiles(GitHubPullRequestUrl pullRequestUrl) {
+        try {
+            List<GitHubPullRequestFile> files = new ArrayList<>();
+            int page = 1;
+
+            while (true) {
+                RestClient.RequestHeadersSpec<?> request = authenticatedRequest(
+                        restClient.get()
+                                .uri(
+                                        "/repos/{owner}/{repo}/pulls/{pullNumber}/files?per_page={perPage}&page={page}",
+                                        pullRequestUrl.owner(),
+                                        pullRequestUrl.repository(),
+                                        pullRequestUrl.pullNumber(),
+                                        FILES_PAGE_SIZE,
+                                        page
+                                )
+                );
+
+                PullRequestFileResponse[] response = request
+                        .retrieve()
+                        .body(PullRequestFileResponse[].class);
+
+                if (response == null) {
+                    throw new GitHubApiException("GitHub returned an empty pull request files response.");
+                }
+
+                files.addAll(Arrays.stream(response)
+                        .map(PullRequestFileResponse::toFile)
+                        .toList());
+
+                if (response.length < FILES_PAGE_SIZE) {
+                    return files;
+                }
+                page++;
+            }
         } catch (RestClientResponseException exception) {
             throw toGitHubApiException(exception);
         }
@@ -72,6 +114,14 @@ public class GitHubPullRequestClient {
                 "GitHub API request failed with status %d.".formatted(exception.getStatusCode().value()),
                 exception
         );
+    }
+
+    private RestClient.RequestHeadersSpec<?> authenticatedRequest(RestClient.RequestHeadersSpec<?> request) {
+        String token = System.getenv("GITHUB_TOKEN");
+        if (token != null && !token.isBlank()) {
+            return request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        }
+        return request;
     }
 
     private record PullRequestResponse(
@@ -109,5 +159,34 @@ public class GitHubPullRequestClient {
     }
 
     private record Ref(String ref) {
+    }
+
+    private record PullRequestFileResponse(
+            String filename,
+            String status,
+            Integer additions,
+            Integer deletions,
+            Integer changes,
+            String patch,
+            @JsonProperty("blob_url") String blobUrl,
+            @JsonProperty("raw_url") String rawUrl,
+            @JsonProperty("contents_url") String contentsUrl,
+            @JsonProperty("previous_filename") String previousFilename
+    ) {
+
+        private GitHubPullRequestFile toFile() {
+            return new GitHubPullRequestFile(
+                    filename,
+                    status,
+                    additions == null ? 0 : additions,
+                    deletions == null ? 0 : deletions,
+                    changes == null ? 0 : changes,
+                    patch == null ? "" : patch,
+                    blobUrl,
+                    rawUrl,
+                    contentsUrl,
+                    previousFilename
+            );
+        }
     }
 }
