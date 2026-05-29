@@ -9,6 +9,7 @@ app:
         display-name: DeepSeek
         base-url: https://api.deepseek.com
         model-id: deepseek-chat
+        api-key-env: DEEPSEEK_API_KEY
 
 server:
   port: 8080
