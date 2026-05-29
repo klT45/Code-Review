@@ -36,6 +36,8 @@ Run the backend:
 mvn -pl backend spring-boot:run
 ```
 
+Optional: set `GITHUB_TOKEN` before running the backend to increase GitHub API limits for public PR lookups.
+
 Run the frontend:
 
 ```bash

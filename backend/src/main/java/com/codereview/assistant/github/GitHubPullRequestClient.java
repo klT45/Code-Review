@@ -31,13 +31,19 @@ public class GitHubPullRequestClient {
 
     public GitHubPullRequestInfo fetch(GitHubPullRequestUrl pullRequestUrl) {
         try {
-            PullRequestResponse response = restClient.get()
+            RestClient.RequestHeadersSpec<?> request = restClient.get()
                     .uri(
                             "/repos/{owner}/{repo}/pulls/{pullNumber}",
                             pullRequestUrl.owner(),
                             pullRequestUrl.repository(),
                             pullRequestUrl.pullNumber()
-                    )
+                    );
+            String token = System.getenv("GITHUB_TOKEN");
+            if (token != null && !token.isBlank()) {
+                request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+            }
+
+            PullRequestResponse response = request
                     .retrieve()
                     .body(PullRequestResponse.class);
 
