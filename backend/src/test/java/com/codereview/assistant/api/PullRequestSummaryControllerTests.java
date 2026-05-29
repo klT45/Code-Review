@@ -3,6 +3,7 @@ package com.codereview.assistant.api;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -48,7 +49,7 @@ class PullRequestSummaryControllerTests {
 
     @Test
     void returnsPullRequestSummary() throws Exception {
-        when(pullRequestClient.fetch(any(GitHubPullRequestUrl.class))).thenReturn(new GitHubPullRequestInfo(
+        when(pullRequestClient.fetch(any(GitHubPullRequestUrl.class), isNull())).thenReturn(new GitHubPullRequestInfo(
                 "Add summary endpoint",
                 "octocat",
                 "open",
@@ -61,7 +62,7 @@ class PullRequestSummaryControllerTests {
                 4,
                 "https://github.com/openai/openai-java/pull/42"
         ));
-        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class))).thenReturn(List.of(
+        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class), isNull())).thenReturn(List.of(
                 new GitHubPullRequestFile(
                         "src/main/java/ReviewService.java",
                         "modified",
@@ -133,6 +134,46 @@ class PullRequestSummaryControllerTests {
     }
 
     @Test
+    void forwardsGitHubTokenToPullRequestClient() throws Exception {
+        GitHubPullRequestUrl expectedUrl = new GitHubPullRequestUrl(
+                "openai",
+                "openai-java",
+                42,
+                "https://github.com/openai/openai-java/pull/42"
+        );
+        when(pullRequestClient.fetch(eq(expectedUrl), eq("request-token"))).thenReturn(new GitHubPullRequestInfo(
+                "Add token access",
+                "octocat",
+                "open",
+                false,
+                false,
+                "feature/token",
+                "main",
+                1,
+                0,
+                0,
+                "https://github.com/openai/openai-java/pull/42"
+        ));
+        when(pullRequestClient.fetchFiles(eq(expectedUrl), eq("request-token"))).thenReturn(List.of());
+        when(aiReviewService.review(any(), any())).thenReturn(AiReviewResult.notConfigured(
+                "deepseek",
+                "deepseek-chat",
+                "API Key is required."
+        ));
+
+        mockMvc.perform(post("/api/pull-requests/summary")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "prUrl": "https://github.com/openai/openai-java/pull/42",
+                                  "githubToken": "request-token"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Add token access"));
+    }
+
+    @Test
     void returnsBadRequestForInvalidUrl() throws Exception {
         mockMvc.perform(post("/api/pull-requests/summary")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,7 +192,7 @@ class PullRequestSummaryControllerTests {
                 "openai-java",
                 404,
                 "https://github.com/openai/openai-java/pull/404"
-        )))).thenThrow(new GitHubApiException("GitHub pull request was not found or is not public."));
+        )), isNull())).thenThrow(new GitHubApiException("GitHub pull request was not found or is not public."));
 
         mockMvc.perform(post("/api/pull-requests/summary")
                         .contentType(MediaType.APPLICATION_JSON)

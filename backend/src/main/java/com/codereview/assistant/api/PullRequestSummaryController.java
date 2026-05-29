@@ -5,6 +5,7 @@ import com.codereview.assistant.review.ai.AiReviewRequest;
 import com.codereview.assistant.review.PullRequestSummaryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,12 +23,17 @@ public class PullRequestSummaryController {
 
     @PostMapping("/summary")
     public PullRequestSummaryResponse summarize(@Valid @RequestBody PullRequestSummaryRequest request) {
-        return summaryService.summarize(request.prUrl(), new AiReviewRequest(request.modelConfig()));
+        return summaryService.summarize(
+                request.prUrl(),
+                new AiReviewRequest(request.modelConfig()),
+                request.githubToken()
+        );
     }
 
     public record PullRequestSummaryRequest(
             @NotBlank(message = "GitHub PR URL is required.") String prUrl,
-            AiModelConfigInput modelConfig
+            AiModelConfigInput modelConfig,
+            @Size(max = 500, message = "GitHub Token is too long.") String githubToken
     ) {
     }
 }

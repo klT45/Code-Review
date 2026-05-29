@@ -69,6 +69,59 @@ class GitHubPullRequestClientTests {
     }
 
     @Test
+    void sendsRequestTokenWhenProvided() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GitHubPullRequestClient client = new GitHubPullRequestClient(builder);
+        GitHubPullRequestUrl pullRequestUrl = new GitHubPullRequestUrl(
+                "openai",
+                "openai-java",
+                42,
+                "https://github.com/openai/openai-java/pull/42"
+        );
+
+        server.expect(once(), requestTo("https://api.github.com/repos/openai/openai-java/pulls/42"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer request-token"))
+                .andRespond(withSuccess("""
+                        {
+                          "title": "Add review endpoint",
+                          "state": "open",
+                          "user": { "login": "octocat" },
+                          "head": { "ref": "feature/review-endpoint" },
+                          "base": { "ref": "main" },
+                          "html_url": "https://github.com/openai/openai-java/pull/42"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        GitHubPullRequestInfo info = client.fetch(pullRequestUrl, " request-token ");
+
+        assertThat(info.title()).isEqualTo("Add review endpoint");
+        server.verify();
+    }
+
+    @Test
+    void sendsRequestTokenForChangedFiles() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GitHubPullRequestClient client = new GitHubPullRequestClient(builder);
+        GitHubPullRequestUrl pullRequestUrl = new GitHubPullRequestUrl(
+                "openai",
+                "openai-java",
+                42,
+                "https://github.com/openai/openai-java/pull/42"
+        );
+
+        server.expect(once(), requestTo("https://api.github.com/repos/openai/openai-java/pulls/42/files?per_page=100&page=1"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer request-token"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.fetchFiles(pullRequestUrl, "request-token")).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void reportsNotFoundPullRequest() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

@@ -34,6 +34,10 @@ public class GitHubPullRequestClient {
     }
 
     public GitHubPullRequestInfo fetch(GitHubPullRequestUrl pullRequestUrl) {
+        return fetch(pullRequestUrl, null);
+    }
+
+    public GitHubPullRequestInfo fetch(GitHubPullRequestUrl pullRequestUrl, String githubToken) {
         try {
             RestClient.RequestHeadersSpec<?> request = authenticatedRequest(
                     restClient.get()
@@ -42,7 +46,8 @@ public class GitHubPullRequestClient {
                                     pullRequestUrl.owner(),
                                     pullRequestUrl.repository(),
                                     pullRequestUrl.pullNumber()
-                            )
+                            ),
+                    githubToken
             );
 
             PullRequestResponse response = request
@@ -60,6 +65,10 @@ public class GitHubPullRequestClient {
     }
 
     public List<GitHubPullRequestFile> fetchFiles(GitHubPullRequestUrl pullRequestUrl) {
+        return fetchFiles(pullRequestUrl, null);
+    }
+
+    public List<GitHubPullRequestFile> fetchFiles(GitHubPullRequestUrl pullRequestUrl, String githubToken) {
         try {
             List<GitHubPullRequestFile> files = new ArrayList<>();
             int page = 1;
@@ -74,7 +83,8 @@ public class GitHubPullRequestClient {
                                         pullRequestUrl.pullNumber(),
                                         FILES_PAGE_SIZE,
                                         page
-                                )
+                                ),
+                        githubToken
                 );
 
                 PullRequestFileResponse[] response = request
@@ -116,12 +126,22 @@ public class GitHubPullRequestClient {
         );
     }
 
-    private RestClient.RequestHeadersSpec<?> authenticatedRequest(RestClient.RequestHeadersSpec<?> request) {
-        String token = System.getenv("GITHUB_TOKEN");
+    private RestClient.RequestHeadersSpec<?> authenticatedRequest(
+            RestClient.RequestHeadersSpec<?> request,
+            String requestToken
+    ) {
+        String token = firstNonBlank(requestToken, System.getenv("GITHUB_TOKEN"));
         if (token != null && !token.isBlank()) {
             return request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }
         return request;
+    }
+
+    private static String firstNonBlank(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred.strip();
+        }
+        return fallback == null || fallback.isBlank() ? null : fallback.strip();
     }
 
     private record PullRequestResponse(
