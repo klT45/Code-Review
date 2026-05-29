@@ -49,12 +49,47 @@ public class PullRequestSummaryService {
             AiReviewRequest aiReviewRequest,
             String githubToken
     ) {
+        PullRequestData pullRequestData = fetchPullRequestData(rawPullRequestUrl, githubToken);
+        AiReviewResult aiReview = aiReviewService.review(
+                pullRequestData.reviewContext(),
+                aiReviewRequest.modelConfig()
+        );
+        return toSummaryResponse(pullRequestData, aiReview);
+    }
+
+    public PullRequestSummaryResponse summarizeBasic(String rawPullRequestUrl, String githubToken) {
+        PullRequestData pullRequestData = fetchPullRequestData(rawPullRequestUrl, githubToken);
+        return toSummaryResponse(pullRequestData, null);
+    }
+
+    public PullRequestSummaryResponse.AiReviewResponse review(
+            String rawPullRequestUrl,
+            AiReviewRequest aiReviewRequest,
+            String githubToken
+    ) {
+        PullRequestData pullRequestData = fetchPullRequestData(rawPullRequestUrl, githubToken);
+        AiReviewResult aiReview = aiReviewService.review(
+                pullRequestData.reviewContext(),
+                aiReviewRequest.modelConfig()
+        );
+        return toResponse(aiReview);
+    }
+
+    private PullRequestData fetchPullRequestData(String rawPullRequestUrl, String githubToken) {
         GitHubPullRequestUrl pullRequestUrl = urlParser.parse(rawPullRequestUrl);
         GitHubPullRequestInfo info = pullRequestClient.fetch(pullRequestUrl, githubToken);
         List<GitHubPullRequestFile> changedFiles = pullRequestClient.fetchFiles(pullRequestUrl, githubToken);
         ReviewContext reviewContext = reviewContextBuilder.build(pullRequestUrl, info, changedFiles);
-        AiReviewResult aiReview = aiReviewService.review(reviewContext, aiReviewRequest.modelConfig());
-        List<PullRequestSummaryResponse.PullRequestFileResponse> files = changedFiles
+        return new PullRequestData(pullRequestUrl, info, changedFiles, reviewContext);
+    }
+
+    private static PullRequestSummaryResponse toSummaryResponse(
+            PullRequestData pullRequestData,
+            AiReviewResult aiReview
+    ) {
+        GitHubPullRequestUrl pullRequestUrl = pullRequestData.pullRequestUrl();
+        GitHubPullRequestInfo info = pullRequestData.info();
+        List<PullRequestSummaryResponse.PullRequestFileResponse> files = pullRequestData.changedFiles()
                 .stream()
                 .map(PullRequestSummaryService::toResponse)
                 .toList();
@@ -76,8 +111,8 @@ public class PullRequestSummaryService {
                 info.changedFiles(),
                 info.htmlUrl(),
                 files,
-                toResponse(reviewContext),
-                toResponse(aiReview)
+                toResponse(pullRequestData.reviewContext()),
+                aiReview == null ? null : toResponse(aiReview)
         );
     }
 
@@ -160,5 +195,13 @@ public class PullRequestSummaryService {
                 item.needsHumanReview(),
                 item.recommendation()
         );
+    }
+
+    private record PullRequestData(
+            GitHubPullRequestUrl pullRequestUrl,
+            GitHubPullRequestInfo info,
+            List<GitHubPullRequestFile> changedFiles,
+            ReviewContext reviewContext
+    ) {
     }
 }

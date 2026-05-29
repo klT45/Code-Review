@@ -30,6 +30,20 @@ public class PullRequestSummaryController {
         );
     }
 
+    @PostMapping("/summary/basic")
+    public PullRequestSummaryResponse summarizeBasic(@Valid @RequestBody PullRequestSummaryRequest request) {
+        return summaryService.summarizeBasic(request.prUrl(), request.githubToken());
+    }
+
+    @PostMapping("/review")
+    public PullRequestSummaryResponse.AiReviewResponse review(@Valid @RequestBody PullRequestSummaryRequest request) {
+        return summaryService.review(
+                request.prUrl(),
+                new AiReviewRequest(request.modelConfig()),
+                request.githubToken()
+        );
+    }
+
     public record PullRequestSummaryRequest(
             @NotBlank(message = "GitHub PR URL is required.") String prUrl,
             AiModelConfigInput modelConfig,

@@ -152,6 +152,8 @@ export function App() {
   const [summary, setSummary] = useState<PullRequestSummary | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [modelOptions, setModelOptions] = useState<ModelConfigurationOptions | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelFormState>(emptyModelForm);
@@ -287,6 +289,7 @@ export function App() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setReviewError('');
     setSummary(null);
     setCopyState('idle');
 
@@ -296,17 +299,19 @@ export function App() {
     }
 
     setIsLoading(true);
+    setIsReviewLoading(false);
     try {
-      const response = await fetch('/api/pull-requests/summary', {
+      const requestPayload = {
+        prUrl: prUrl.trim(),
+        modelConfig: buildModelConfigPayload(modelConfig),
+        githubToken: githubToken.trim() || undefined,
+      };
+      const response = await fetch('/api/pull-requests/summary/basic', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prUrl: prUrl.trim(),
-          modelConfig: buildModelConfigPayload(modelConfig),
-          githubToken: githubToken.trim() || undefined,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
@@ -314,11 +319,37 @@ export function App() {
         throw new Error(apiError.message || '获取 PR 摘要失败。');
       }
 
-      setSummary((await response.json()) as PullRequestSummary);
+      const basicSummary = (await response.json()) as PullRequestSummary;
+      setSummary(basicSummary);
+      setIsLoading(false);
+      setIsReviewLoading(true);
+
+      try {
+        const reviewResponse = await fetch('/api/pull-requests/review', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestPayload),
+        });
+
+        if (!reviewResponse.ok) {
+          const apiError = (await reviewResponse.json()) as ApiError;
+          throw new Error(apiError.message || 'AI Review 生成失败。');
+        }
+
+        const aiReview = (await reviewResponse.json()) as AiReview;
+        setSummary((current) => current ? { ...current, aiReview } : current);
+      } catch (caughtError) {
+        setReviewError(caughtError instanceof Error ? caughtError.message : 'AI Review 生成失败。');
+      } finally {
+        setIsReviewLoading(false);
+      }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : '获取 PR 摘要失败。');
-    } finally {
       setIsLoading(false);
+    } finally {
+      setIsReviewLoading(false);
     }
   }
 
@@ -357,13 +388,13 @@ export function App() {
                 value={prUrl}
                 onChange={(event) => setPrUrl(event.target.value)}
               />
-              <button type="submit" disabled={isLoading}>
+              <button type="submit" disabled={isLoading || isReviewLoading}>
                 {isLoading ? (
                   <Loader2 className="spin" aria-hidden="true" size={18} />
                 ) : (
                   <GitPullRequestArrow aria-hidden="true" size={18} />
                 )}
-                {isLoading ? '分析中' : '分析 PR'}
+                {isLoading ? '获取 PR' : isReviewLoading ? 'AI 分析中' : '分析 PR'}
               </button>
             </div>
           </form>
@@ -572,6 +603,34 @@ export function App() {
                 <span className="deletions">-{summary.deletions}</span>
               </div>
             </section>
+
+            {(isReviewLoading || reviewError) && (
+              <section className={`ai-panel pending ${reviewError ? 'not-ready' : 'generated'}`} aria-label="AI Review 生成状态">
+                <div className="ai-header">
+                  <div>
+                    <p className="eyebrow">AI Review</p>
+                    <h2>{reviewError ? 'AI Review 暂不可用' : 'AI Review 生成中'}</h2>
+                  </div>
+                  <div className="ai-state">
+                    {reviewError ? (
+                      <ShieldAlert aria-hidden="true" size={18} />
+                    ) : (
+                      <Loader2 className="spin" aria-hidden="true" size={18} />
+                    )}
+                    {reviewError ? '生成失败' : '分析中'}
+                  </div>
+                </div>
+                <div className="ai-config-note" role={reviewError ? 'alert' : 'status'}>
+                  <AlertTriangle aria-hidden="true" size={19} />
+                  <div>
+                    <strong>{reviewError ? '基础信息已返回，AI 结果未生成' : '基础信息已返回，正在生成 Review'}</strong>
+                    <p>
+                      {reviewError || '你可以先查看 PR 摘要、变更文件和上下文信息，AI Review 完成后会自动填充到这里。'}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
 
             {summary.aiReview && (
               <section className={`ai-panel ${summary.aiReview.generated ? 'generated' : 'not-ready'}`} aria-label="AI Review 结果">
