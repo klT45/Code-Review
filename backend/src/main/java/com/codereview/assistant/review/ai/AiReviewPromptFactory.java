@@ -20,17 +20,28 @@ public class AiReviewPromptFactory {
                       "file": "path/to/file",
                       "title": "short issue title in Chinese",
                       "detail": "why this may be risky",
+                      "evidence": "specific changed code or context that supports this finding",
+                      "impact": "possible production, security, data, performance, or maintainability impact",
+                      "confidence": "high|medium|low",
+                      "needsHumanReview": true,
                       "recommendation": "concrete review suggestion"
                     }
                   ],
-                  "suggestions": ["actionable review suggestion in Chinese"],
+                  "requiredActions": ["must-fix item before merge in Chinese"],
+                  "suggestions": ["recommended improvement in Chinese"],
+                  "followUpItems": ["non-blocking follow-up item in Chinese"],
+                  "limitations": ["context limitation that affects review confidence in Chinese"],
                   "markdown": "copy-ready Markdown review in Chinese"
                 }
 
                 Review rules:
                 - Focus on changed code and likely production risks.
+                - Every risk item must cite evidence from the provided context. If evidence is weak, set confidence to low and needsHumanReview to true.
+                - Separate blocking fixes, recommended improvements, and non-blocking follow-ups.
                 - Do not invent files or code that are not present in the context.
+                - If no clear risk is found, return an empty riskItems array and say so in summary and markdown.
                 - If context is truncated or a patch is missing, mention that limitation in markdown.
+                - Treat generated files, lock files, docs-only changes, and pure styling changes as lower risk unless the patch shows a concrete problem.
                 - Keep the output concise and practical for a pull request comment.
 
                 Context limitations:

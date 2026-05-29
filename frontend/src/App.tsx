@@ -1,10 +1,11 @@
-import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
   Bot,
   CheckCircle2,
   ClipboardCopy,
+  ClipboardList,
   ExternalLink,
   FileCode2,
   Files,
@@ -12,10 +13,10 @@ import {
   GitPullRequestArrow,
   Loader2,
   SlidersHorizontal,
-  ServerCog,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Wrench,
   X,
 } from 'lucide-react';
 
@@ -66,6 +67,10 @@ type AiRiskItem = {
   file: string;
   title: string;
   detail: string;
+  evidence: string;
+  impact: string;
+  confidence: string;
+  needsHumanReview: boolean;
   recommendation: string;
 };
 
@@ -76,7 +81,10 @@ type AiReview = {
   modelId: string;
   summary: string;
   riskItems: AiRiskItem[];
+  requiredActions: string[];
   suggestions: string[];
+  followUpItems: string[];
+  limitations: string[];
   markdown: string;
   message: string;
 };
@@ -101,6 +109,8 @@ type PullRequestSummary = {
   reviewContext: ReviewContext;
   aiReview: AiReview | null;
 };
+
+type WorkbenchView = 'pr-info' | 'ai-review';
 
 type ModelProvider = {
   id: string;
@@ -143,6 +153,10 @@ export function App() {
   const [summary, setSummary] = useState<PullRequestSummary | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [isWorkbenchOpen, setIsWorkbenchOpen] = useState(false);
+  const [workbenchView, setWorkbenchView] = useState<WorkbenchView>('pr-info');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [modelOptions, setModelOptions] = useState<ModelConfigurationOptions | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelFormState>(emptyModelForm);
@@ -150,6 +164,7 @@ export function App() {
   const [isModelPanelOpen, setIsModelPanelOpen] = useState(false);
   const [githubToken, setGithubToken] = useState('');
   const [isGitHubPanelOpen, setIsGitHubPanelOpen] = useState(false);
+  const analysisRunId = useRef(0);
 
   useEffect(() => {
     let isActive = true;
@@ -193,7 +208,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!isModelPanelOpen && !isGitHubPanelOpen) {
+    if (!isModelPanelOpen && !isGitHubPanelOpen && !isWorkbenchOpen) {
       return undefined;
     }
 
@@ -201,12 +216,13 @@ export function App() {
       if (event.key === 'Escape') {
         setIsModelPanelOpen(false);
         setIsGitHubPanelOpen(false);
+        setIsWorkbenchOpen(false);
       }
     }
 
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isGitHubPanelOpen, isModelPanelOpen]);
+  }, [isGitHubPanelOpen, isModelPanelOpen, isWorkbenchOpen]);
 
   const changeSize = useMemo(() => {
     if (!summary) {
@@ -251,8 +267,21 @@ export function App() {
       high: riskItems.filter((item) => item.severity === 'high').length,
       medium: riskItems.filter((item) => item.severity === 'medium').length,
       low: riskItems.filter((item) => item.severity === 'low').length,
+      needsHumanReview: riskItems.filter((item) => item.needsHumanReview).length,
     };
   }, [summary]);
+
+  const reviewMarkdown = useMemo(() => {
+    if (!summary?.aiReview?.generated) {
+      return '';
+    }
+    if (summary.aiReview.markdown?.trim()) {
+      return summary.aiReview.markdown;
+    }
+    return buildReviewMarkdown(summary);
+  }, [summary]);
+
+  const markdownSourceLabel = summary?.aiReview?.markdown?.trim() ? '模型生成' : '结构化生成';
 
   const selectedProvider = useMemo(() => {
     return modelOptions?.providers.find((provider) => provider.id === modelConfig.providerId) ?? null;
@@ -265,7 +294,10 @@ export function App() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setReviewError('');
     setSummary(null);
+    setIsWorkbenchOpen(false);
+    setWorkbenchView('pr-info');
     setCopyState('idle');
 
     if (!prUrl.trim()) {
@@ -273,18 +305,32 @@ export function App() {
       return;
     }
 
+    const runId = analysisRunId.current + 1;
+    analysisRunId.current = runId;
     setIsLoading(true);
+    setIsReviewLoading(true);
     try {
-      const response = await fetch('/api/pull-requests/summary', {
+      const requestPayload = {
+        prUrl: prUrl.trim(),
+        modelConfig: buildModelConfigPayload(modelConfig),
+        githubToken: githubToken.trim() || undefined,
+      };
+
+      const reviewPromise = fetch('/api/pull-requests/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prUrl: prUrl.trim(),
-          modelConfig: buildModelConfigPayload(modelConfig),
-          githubToken: githubToken.trim() || undefined,
-        }),
+        body: JSON.stringify(requestPayload),
+      });
+      reviewPromise.catch(() => undefined);
+
+      const response = await fetch('/api/pull-requests/summary/basic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
@@ -292,9 +338,41 @@ export function App() {
         throw new Error(apiError.message || '获取 PR 摘要失败。');
       }
 
-      setSummary((await response.json()) as PullRequestSummary);
+      const basicSummary = (await response.json()) as PullRequestSummary;
+      if (analysisRunId.current !== runId) {
+        return;
+      }
+      setSummary(basicSummary);
+      setIsWorkbenchOpen(true);
+      setIsLoading(false);
+
+      try {
+        const reviewResponse = await reviewPromise;
+
+        if (!reviewResponse.ok) {
+          const apiError = (await reviewResponse.json()) as ApiError;
+          throw new Error(apiError.message || 'AI Review 生成失败。');
+        }
+
+        const aiReview = (await reviewResponse.json()) as AiReview;
+        if (analysisRunId.current !== runId) {
+          return;
+        }
+        setSummary((current) => current ? { ...current, aiReview } : current);
+      } catch (caughtError) {
+        if (analysisRunId.current !== runId) {
+          return;
+        }
+        setReviewError(caughtError instanceof Error ? caughtError.message : 'AI Review 生成失败。');
+      } finally {
+        if (analysisRunId.current === runId) {
+          setIsReviewLoading(false);
+        }
+      }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : '获取 PR 摘要失败。');
+      setIsLoading(false);
+      setIsReviewLoading(false);
     } finally {
       setIsLoading(false);
     }
@@ -335,13 +413,13 @@ export function App() {
                 value={prUrl}
                 onChange={(event) => setPrUrl(event.target.value)}
               />
-              <button type="submit" disabled={isLoading}>
+              <button type="submit" disabled={isLoading || isReviewLoading}>
                 {isLoading ? (
                   <Loader2 className="spin" aria-hidden="true" size={18} />
                 ) : (
                   <GitPullRequestArrow aria-hidden="true" size={18} />
                 )}
-                {isLoading ? '分析中' : '分析 PR'}
+                {isLoading ? '获取 PR' : isReviewLoading ? 'AI 分析中' : '分析 PR'}
               </button>
             </div>
           </form>
@@ -518,266 +596,106 @@ export function App() {
           </div>
         )}
 
-        {summary && (
-          <>
-            <section className="summary-panel" aria-label="PR 基础摘要">
-              <div className="summary-header">
+        {summary && !isWorkbenchOpen && (
+          <section className="result-dock" aria-label="最近一次分析结果">
+            <div>
+              <p className="eyebrow">{summary.owner} / {summary.repository}</p>
+              <h2>{summary.title}</h2>
+            </div>
+            <button type="button" onClick={() => setIsWorkbenchOpen(true)}>
+              打开分析结果
+              <ExternalLink aria-hidden="true" size={16} />
+            </button>
+          </section>
+        )}
+
+        {summary && isWorkbenchOpen && (
+          <div className="workbench-backdrop" role="presentation" onMouseDown={() => setIsWorkbenchOpen(false)}>
+            <section
+              className="workbench-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="workbench-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="workbench-header">
                 <div>
                   <p className="eyebrow">{summary.owner} / {summary.repository}</p>
-                  <h2>{summary.title}</h2>
+                  <h2 id="workbench-title">{summary.title}</h2>
                 </div>
-                <a href={summary.htmlUrl} target="_blank" rel="noreferrer">
-                  打开 PR
-                  <ExternalLink aria-hidden="true" size={15} />
-                </a>
+                <div className="workbench-actions">
+                  <a href={summary.htmlUrl} target="_blank" rel="noreferrer">
+                    打开 PR
+                    <ExternalLink aria-hidden="true" size={15} />
+                  </a>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭分析结果"
+                    onClick={() => setIsWorkbenchOpen(false)}
+                  >
+                    <X aria-hidden="true" size={18} />
+                  </button>
+                </div>
               </div>
 
-              <div className="meta-grid">
-                <SummaryMetric label="作者" value={summary.author} />
-                <SummaryMetric label="状态" value={summary.draft ? 'Draft' : summary.state} />
-                <SummaryMetric label="文件数" value={summary.changedFiles.toString()} />
-                <SummaryMetric label="总变更" value={changeSize?.toString() ?? '0'} />
-              </div>
-
-              <div className="branch-line">
-                <span>{summary.headBranch}</span>
-                <ArrowRightLeft aria-hidden="true" size={16} />
-                <span>{summary.baseBranch}</span>
-              </div>
-
-              <div className="diff-bar" aria-label="新增和删除统计">
-                <span className="additions">+{summary.additions}</span>
-                <span className="deletions">-{summary.deletions}</span>
-              </div>
-            </section>
-
-            {summary.aiReview && (
-              <section className={`ai-panel ${summary.aiReview.generated ? 'generated' : 'not-ready'}`} aria-label="AI Review 结果">
-                <div className="ai-header">
-                  <div>
-                    <p className="eyebrow">AI Review</p>
-                    <h2>智能 Review</h2>
-                  </div>
-                  <div className="ai-state">
-                    {summary.aiReview.generated ? (
-                      <ShieldCheck aria-hidden="true" size={18} />
-                    ) : (
-                      <ShieldAlert aria-hidden="true" size={18} />
-                    )}
-                    {summary.aiReview.generated ? '已生成' : '等待配置'}
-                  </div>
-                </div>
-
-                <div className="ai-model-line" aria-label="当前模型">
-                  <span>{summary.aiReview.providerId || 'default'}</span>
-                  <strong>{summary.aiReview.modelId || '未配置模型'}</strong>
-                </div>
-
-                {summary.aiReview.generated ? (
-                  <>
-                    <div className="ai-summary-block">
-                      <Sparkles aria-hidden="true" size={20} />
-                      <p>{summary.aiReview.summary || 'AI Review 已生成，但没有返回摘要。'}</p>
-                    </div>
-
-                    <div className="risk-overview" aria-label="风险等级统计">
-                      <SummaryMetric label="高风险" value={reviewStats.high.toString()} />
-                      <SummaryMetric label="中风险" value={reviewStats.medium.toString()} />
-                      <SummaryMetric label="低风险" value={reviewStats.low.toString()} />
-                    </div>
-
-                    <div className="ai-section">
-                      <div className="ai-section-header">
-                        <h3>风险代码识别</h3>
-                        <span>{summary.aiReview.riskItems.length} 项</span>
-                      </div>
-
-                      {summary.aiReview.riskItems.length > 0 ? (
-                        <div className="risk-list">
-                          {summary.aiReview.riskItems.map((item, index) => (
-                            <article className="risk-item" key={`${item.file}-${item.title}-${index}`}>
-                              <div className="risk-title-row">
-                                <span className={`severity-tag ${severityTone(item.severity)}`}>
-                                  {severityLabel(item.severity)}
-                                </span>
-                                <h4>{item.title || '未命名风险'}</h4>
-                              </div>
-                              <p className="risk-file">{item.file || '未指定文件'}</p>
-                              <p>{item.detail || '模型未返回风险详情。'}</p>
-                              <div className="risk-recommendation">
-                                <strong>建议</strong>
-                                <span>{item.recommendation || '模型未返回修复建议。'}</span>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="empty-review">
-                          <CheckCircle2 aria-hidden="true" size={19} />
-                          未识别出明显风险。
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="ai-section">
-                      <div className="ai-section-header">
-                        <h3>Review 建议</h3>
-                        <span>{summary.aiReview.suggestions.length} 条</span>
-                      </div>
-                      {summary.aiReview.suggestions.length > 0 ? (
-                        <ul className="suggestion-list">
-                          {summary.aiReview.suggestions.map((suggestion, index) => (
-                            <li key={`${suggestion}-${index}`}>{suggestion}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="empty-review">
-                          <CheckCircle2 aria-hidden="true" size={19} />
-                          暂无额外建议。
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="markdown-box">
-                      <div className="markdown-header">
-                        <h3>Markdown</h3>
-                        <button
-                          className="copy-button"
-                          type="button"
-                          disabled={!summary.aiReview.markdown}
-                          onClick={() => copyMarkdown(summary.aiReview?.markdown ?? '')}
-                        >
-                          {copyState === 'copied' ? (
-                            <CheckCircle2 aria-hidden="true" size={17} />
-                          ) : (
-                            <ClipboardCopy aria-hidden="true" size={17} />
-                          )}
-                          {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制 Markdown'}
-                        </button>
-                      </div>
-                      <pre>{summary.aiReview.markdown || 'AI Review 未返回 Markdown 内容。'}</pre>
-                    </div>
-                  </>
-                ) : (
-                  <div className="ai-config-note" role="status">
-                    <AlertTriangle aria-hidden="true" size={19} />
-                    <div>
-                      <strong>AI Review 未生成</strong>
-                      <p>{summary.aiReview.message || '请配置模型 API Key 后重新分析。'}</p>
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
-
-            <section className="files-panel" aria-label="PR 变更文件">
-              <div className="files-header">
-                <div>
-                  <p className="eyebrow">Changed files</p>
-                  <h2>变更文件</h2>
-                </div>
-                <div className="file-count-badge">
+              <div className="workbench-tabs" role="tablist" aria-label="分析结果视图">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workbenchView === 'pr-info'}
+                  className={workbenchView === 'pr-info' ? 'active' : ''}
+                  onClick={() => setWorkbenchView('pr-info')}
+                >
                   <Files aria-hidden="true" size={17} />
-                  {summary.files.length} 个文件
-                </div>
+                  PR 信息
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workbenchView === 'ai-review'}
+                  className={workbenchView === 'ai-review' ? 'active' : ''}
+                  onClick={() => setWorkbenchView('ai-review')}
+                >
+                  {isReviewLoading ? (
+                    <Loader2 className="spin" aria-hidden="true" size={17} />
+                  ) : (
+                    <Sparkles aria-hidden="true" size={17} />
+                  )}
+                  AI Review
+                  <span className={`tab-state ${summary.aiReview?.generated ? 'ready' : reviewError ? 'error' : ''}`}>
+                    {summary.aiReview?.generated ? '已完成' : reviewError ? '失败' : '生成中'}
+                  </span>
+                </button>
               </div>
 
-              <div className="file-flow" aria-hidden="true">
-                <div className="flow-rail">
-                  {fileStats?.visibleTrackFiles.map((file, index) => (
-                    <span
-                      className={`flow-node ${statusTone(file.status)}`}
-                      key={`${file.filename}-${index}`}
-                      style={{ '--delay': `${index * 80}ms` } as CSSProperties}
-                      title={file.filename}
-                    />
-                  ))}
-                </div>
-                <div className="flow-summary">
-                  <span>{fileStats?.patchCount ?? 0} 个 patch 可用</span>
-                  <strong>{fileStats?.largestFile?.filename ?? '无文件变更'}</strong>
-                </div>
-              </div>
-
-              <div className="file-list">
-                {summary.files.map((file) => (
-                  <article className="file-row" key={file.filename}>
-                    <div className="file-main">
-                      <FileCode2 aria-hidden="true" size={18} />
-                      <div>
-                        <h3>{file.filename}</h3>
-                        {file.previousFilename && (
-                          <p>原文件：{file.previousFilename}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="file-meta">
-                      <span className={`status-tag ${statusTone(file.status)}`}>
-                        {statusLabel(file.status)}
-                      </span>
-                      <span className="file-change additions">+{file.additions}</span>
-                      <span className="file-change deletions">-{file.deletions}</span>
-                      <span className="file-change">{file.changes} 行</span>
-                      <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
-                        {file.patch ? 'patch 可用' : '无 patch'}
-                      </span>
-                      {file.blobUrl && (
-                        <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
-                          <ExternalLink aria-hidden="true" size={15} />
-                        </a>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="context-panel" aria-label="Review 上下文">
-              <div className="context-header">
-                <div>
-                  <p className="eyebrow">Review context</p>
-                  <h2>模型上下文</h2>
-                </div>
-                <div className="context-meter" aria-label={`上下文长度 ${summary.reviewContext.stats.promptCharacters} 字符`}>
-                  <span
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        (summary.reviewContext.stats.promptCharacters
-                          / summary.reviewContext.stats.maxPromptCharacters) * 100
-                      )}%`,
-                    }}
+              <div className="workbench-content">
+                {workbenchView === 'pr-info' ? (
+                  <PrInfoView
+                    summary={summary}
+                    changeSize={changeSize}
+                    fileStats={fileStats}
+                    contextCoverage={contextCoverage}
+                    isReviewLoading={isReviewLoading}
+                    reviewReady={Boolean(summary.aiReview?.generated)}
+                    reviewError={reviewError}
+                    onOpenAiReview={() => setWorkbenchView('ai-review')}
                   />
-                </div>
+                ) : (
+                  <AiReviewModules
+                    summary={summary}
+                    isReviewLoading={isReviewLoading}
+                    reviewError={reviewError}
+                    reviewStats={reviewStats}
+                    reviewMarkdown={reviewMarkdown}
+                    markdownSourceLabel={markdownSourceLabel}
+                    copyState={copyState}
+                    onCopyMarkdown={copyMarkdown}
+                  />
+                )}
               </div>
-
-              <div className="context-grid">
-                <SummaryMetric label="上下文字符" value={summary.reviewContext.stats.promptCharacters.toString()} />
-                <SummaryMetric label="Patch 覆盖" value={`${contextCoverage}%`} />
-                <SummaryMetric label="可用 Patch" value={`${summary.reviewContext.stats.filesWithPatch}/${summary.reviewContext.stats.totalFiles}`} />
-                <SummaryMetric label="截断文件" value={summary.reviewContext.stats.truncatedFiles.toString()} />
-              </div>
-
-              <div className="context-note">
-                <strong>上下文策略</strong>
-                <p>
-                  每个文件最多保留 {summary.reviewContext.stats.maxPatchCharactersPerFile} 个 patch 字符，
-                  总 prompt 最多保留 {summary.reviewContext.stats.maxPromptCharacters} 个字符。后续 AI Review 将基于该结构化上下文生成总结、风险识别和建议。
-                </p>
-              </div>
-
-              {summary.reviewContext.truncationNotes.length > 0 && (
-                <div className="context-warnings">
-                  <strong>截断与缺失说明</strong>
-                  <ul>
-                    {summary.reviewContext.truncationNotes.map((note) => (
-                      <li key={note}>{note}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </section>
-          </>
+          </div>
         )}
       </section>
     </main>
@@ -825,6 +743,424 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PrInfoView({
+  summary,
+  changeSize,
+  fileStats,
+  contextCoverage,
+  isReviewLoading,
+  reviewReady,
+  reviewError,
+  onOpenAiReview,
+}: {
+  summary: PullRequestSummary;
+  changeSize: number | null;
+  fileStats: {
+    patchCount: number;
+    largestFile: PullRequestFile | null;
+    visibleTrackFiles: PullRequestFile[];
+  } | null;
+  contextCoverage: number;
+  isReviewLoading: boolean;
+  reviewReady: boolean;
+  reviewError: string;
+  onOpenAiReview: () => void;
+}) {
+  return (
+    <div className="pr-form-view">
+      <section className="summary-panel embedded" aria-label="PR 基础摘要">
+        <div className="meta-grid">
+          <SummaryMetric label="作者" value={summary.author} />
+          <SummaryMetric label="状态" value={summary.draft ? 'Draft' : summary.state} />
+          <SummaryMetric label="文件数" value={summary.changedFiles.toString()} />
+          <SummaryMetric label="总变更" value={changeSize?.toString() ?? '0'} />
+        </div>
+
+        <div className="branch-line">
+          <span>{summary.headBranch}</span>
+          <ArrowRightLeft aria-hidden="true" size={16} />
+          <span>{summary.baseBranch}</span>
+        </div>
+
+        <div className="diff-bar" aria-label="新增和删除统计">
+          <span className="additions">+{summary.additions}</span>
+          <span className="deletions">-{summary.deletions}</span>
+        </div>
+      </section>
+
+      <section className="review-launch-card" aria-label="AI Review 准备状态">
+        <div>
+          <p className="eyebrow">AI Review</p>
+          <h3>{reviewReady ? 'AI 分析已就绪' : reviewError ? 'AI 分析暂不可用' : 'AI 正在后台分析'}</h3>
+          <p>
+            {reviewReady
+              ? '点击按钮查看模块化分析结果。'
+              : reviewError || '你可以先核对 PR 信息，AI Review 结果生成后会自动填充。'}
+          </p>
+        </div>
+        <button type="button" onClick={onOpenAiReview}>
+          {isReviewLoading && !reviewReady && !reviewError ? (
+            <Loader2 className="spin" aria-hidden="true" size={18} />
+          ) : (
+            <Sparkles aria-hidden="true" size={18} />
+          )}
+          {reviewReady ? '查看 AI Review' : '打开 AI Review'}
+        </button>
+      </section>
+
+      <section className="files-panel embedded" aria-label="PR 变更文件">
+        <div className="files-header">
+          <div>
+            <p className="eyebrow">Changed files</p>
+            <h3>变更文件</h3>
+          </div>
+          <div className="file-count-badge">
+            <Files aria-hidden="true" size={17} />
+            {summary.files.length} 个文件
+          </div>
+        </div>
+
+        <div className="file-flow" aria-hidden="true">
+          <div className="flow-rail">
+            {fileStats?.visibleTrackFiles.map((file, index) => (
+              <span
+                className={`flow-node ${statusTone(file.status)}`}
+                key={`${file.filename}-${index}`}
+                style={{ '--delay': `${index * 80}ms` } as CSSProperties}
+                title={file.filename}
+              />
+            ))}
+          </div>
+          <div className="flow-summary">
+            <span>{fileStats?.patchCount ?? 0} 个 patch 可用</span>
+            <strong>{fileStats?.largestFile?.filename ?? '无文件变更'}</strong>
+          </div>
+        </div>
+
+        <div className="file-list compact">
+          {summary.files.map((file) => (
+            <article className="file-row" key={file.filename}>
+              <div className="file-main">
+                <FileCode2 aria-hidden="true" size={18} />
+                <div>
+                  <h3>{file.filename}</h3>
+                  {file.previousFilename && (
+                    <p>原文件：{file.previousFilename}</p>
+                  )}
+                </div>
+              </div>
+              <div className="file-meta">
+                <span className={`status-tag ${statusTone(file.status)}`}>
+                  {statusLabel(file.status)}
+                </span>
+                <span className="file-change additions">+{file.additions}</span>
+                <span className="file-change deletions">-{file.deletions}</span>
+                <span className="file-change">{file.changes} 行</span>
+                <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
+                  {file.patch ? 'patch 可用' : '无 patch'}
+                </span>
+                {file.blobUrl && (
+                  <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
+                    <ExternalLink aria-hidden="true" size={15} />
+                  </a>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="context-panel embedded" aria-label="Review 上下文">
+        <div className="context-header">
+          <div>
+            <p className="eyebrow">Review context</p>
+            <h3>模型上下文</h3>
+          </div>
+          <div className="context-meter" aria-label={`上下文长度 ${summary.reviewContext.stats.promptCharacters} 字符`}>
+            <span
+              style={{
+                width: `${Math.min(
+                  100,
+                  (summary.reviewContext.stats.promptCharacters
+                    / summary.reviewContext.stats.maxPromptCharacters) * 100
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="context-grid">
+          <SummaryMetric label="上下文字符" value={summary.reviewContext.stats.promptCharacters.toString()} />
+          <SummaryMetric label="Patch 覆盖" value={`${contextCoverage}%`} />
+          <SummaryMetric label="可用 Patch" value={`${summary.reviewContext.stats.filesWithPatch}/${summary.reviewContext.stats.totalFiles}`} />
+          <SummaryMetric label="截断文件" value={summary.reviewContext.stats.truncatedFiles.toString()} />
+        </div>
+
+        {summary.reviewContext.truncationNotes.length > 0 && (
+          <div className="context-warnings">
+            <strong>截断与缺失说明</strong>
+            <ul>
+              {summary.reviewContext.truncationNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AiReviewModules({
+  summary,
+  isReviewLoading,
+  reviewError,
+  reviewStats,
+  reviewMarkdown,
+  markdownSourceLabel,
+  copyState,
+  onCopyMarkdown,
+}: {
+  summary: PullRequestSummary;
+  isReviewLoading: boolean;
+  reviewError: string;
+  reviewStats: {
+    high: number;
+    medium: number;
+    low: number;
+    needsHumanReview: number;
+  };
+  reviewMarkdown: string;
+  markdownSourceLabel: string;
+  copyState: 'idle' | 'copied' | 'failed';
+  onCopyMarkdown: (markdown: string) => void;
+}) {
+  const review = summary.aiReview;
+
+  if (isReviewLoading && !review?.generated) {
+    return (
+      <div className="review-loading-panel" role="status">
+        <Loader2 className="spin" aria-hidden="true" size={22} />
+        <div>
+          <h3>AI Review 正在生成</h3>
+          <p>PR 信息已经可查看。模型完成后，这里会自动切换为模块化分析结果。</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (reviewError) {
+    return (
+      <div className="ai-config-note review-error-panel" role="alert">
+        <AlertTriangle aria-hidden="true" size={19} />
+        <div>
+          <strong>AI Review 生成失败</strong>
+          <p>{reviewError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!review) {
+    return (
+      <div className="empty-review">
+        <AlertTriangle aria-hidden="true" size={19} />
+        AI Review 尚未返回结果。
+      </div>
+    );
+  }
+
+  if (!review.generated) {
+    return (
+      <div className="ai-config-note" role="status">
+        <AlertTriangle aria-hidden="true" size={19} />
+        <div>
+          <strong>AI Review 未生成</strong>
+          <p>{review.message || '请配置模型 API Key 后重新分析。'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ai-module-view">
+      <section className="review-module summary-module">
+        <div className="module-title">
+          <Sparkles aria-hidden="true" size={19} />
+          <h3>变更总结</h3>
+        </div>
+        <p>{review.summary || 'AI Review 已生成，但没有返回摘要。'}</p>
+        <div className="ai-model-line" aria-label="当前模型">
+          <span>{review.providerId || 'default'}</span>
+          <strong>{review.modelId || '未配置模型'}</strong>
+        </div>
+      </section>
+
+      <section className="review-module">
+        <div className="module-title">
+          <ShieldAlert aria-hidden="true" size={19} />
+          <h3>风险概览</h3>
+        </div>
+        <div className="risk-overview" aria-label="风险等级统计">
+          <SummaryMetric label="高风险" value={reviewStats.high.toString()} />
+          <SummaryMetric label="中风险" value={reviewStats.medium.toString()} />
+          <SummaryMetric label="低风险" value={reviewStats.low.toString()} />
+          <SummaryMetric label="需确认" value={reviewStats.needsHumanReview.toString()} />
+        </div>
+      </section>
+
+      <section className="review-module">
+        <div className="module-title">
+          <FileCode2 aria-hidden="true" size={19} />
+          <h3>风险代码识别</h3>
+          <span>{review.riskItems.length} 项</span>
+        </div>
+
+        {review.riskItems.length > 0 ? (
+          <div className="risk-list">
+            {review.riskItems.map((item, index) => (
+              <article className="risk-item" key={`${item.file}-${item.title}-${index}`}>
+                <div className="risk-title-row">
+                  <span className={`severity-tag ${severityTone(item.severity)}`}>
+                    {severityLabel(item.severity)}
+                  </span>
+                  <span className={`confidence-tag ${confidenceTone(item.confidence)}`}>
+                    {confidenceLabel(item.confidence)}
+                  </span>
+                  {item.needsHumanReview && (
+                    <span className="human-review-tag">需人工确认</span>
+                  )}
+                  <h4>{item.title || '未命名风险'}</h4>
+                </div>
+                <p className="risk-file">{item.file || '未指定文件'}</p>
+                <p>{item.detail || '模型未返回风险详情。'}</p>
+                <div className="risk-evidence-grid">
+                  <div>
+                    <strong>判断依据</strong>
+                    <span>{item.evidence || '模型未返回明确依据。'}</span>
+                  </div>
+                  <div>
+                    <strong>可能影响</strong>
+                    <span>{item.impact || '模型未返回影响说明。'}</span>
+                  </div>
+                </div>
+                <div className="risk-recommendation">
+                  <strong>建议</strong>
+                  <span>{item.recommendation || '模型未返回修复建议。'}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-review">
+            <CheckCircle2 aria-hidden="true" size={19} />
+            未识别出明显风险。
+          </div>
+        )}
+      </section>
+
+      <section className="review-module">
+        <div className="module-title">
+          <Wrench aria-hidden="true" size={19} />
+          <h3>Review 建议</h3>
+        </div>
+        <div className="review-action-grid">
+          <ReviewActionGroup
+            tone="required"
+            title="必须修改"
+            icon={<ShieldAlert aria-hidden="true" size={18} />}
+            items={review.requiredActions ?? []}
+            emptyText="暂无必须修改项。"
+          />
+          <ReviewActionGroup
+            tone="suggested"
+            title="建议优化"
+            icon={<Wrench aria-hidden="true" size={18} />}
+            items={review.suggestions}
+            emptyText="暂无建议优化项。"
+          />
+          <ReviewActionGroup
+            tone="follow-up"
+            title="后续处理"
+            icon={<ClipboardList aria-hidden="true" size={18} />}
+            items={review.followUpItems ?? []}
+            emptyText="暂无后续处理项。"
+          />
+        </div>
+      </section>
+
+      {(review.limitations?.length ?? 0) > 0 && (
+        <section className="review-module limitation-module">
+          <div className="module-title">
+            <AlertTriangle aria-hidden="true" size={19} />
+            <h3>判断限制</h3>
+            <span>{review.limitations.length} 条</span>
+          </div>
+          <ul className="limitation-list">
+            {review.limitations.map((limitation, index) => (
+              <li key={`${limitation}-${index}`}>{limitation}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="review-module markdown-box">
+        <div className="markdown-header">
+          <h3>Markdown</h3>
+          <span className="markdown-source">{markdownSourceLabel}</span>
+          <button
+            className="copy-button"
+            type="button"
+            disabled={!reviewMarkdown}
+            onClick={() => onCopyMarkdown(reviewMarkdown)}
+          >
+            {copyState === 'copied' ? (
+              <CheckCircle2 aria-hidden="true" size={17} />
+            ) : (
+              <ClipboardCopy aria-hidden="true" size={17} />
+            )}
+            {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制 Markdown'}
+          </button>
+        </div>
+        <pre>{reviewMarkdown || 'AI Review 暂无可复制 Markdown 内容。'}</pre>
+      </section>
+    </div>
+  );
+}
+
+function ReviewActionGroup({
+  tone,
+  title,
+  icon,
+  items,
+  emptyText,
+}: {
+  tone: 'required' | 'suggested' | 'follow-up';
+  title: string;
+  icon: ReactNode;
+  items: string[];
+  emptyText: string;
+}) {
+  return (
+    <section className={`review-action-group ${tone}`} aria-label={title}>
+      <div className="review-action-title">
+        {icon}
+        <strong>{title}</strong>
+        <span>{items.length}</span>
+      </div>
+      {items.length > 0 ? (
+        <ul>
+          {items.map((item, index) => (
+            <li key={`${title}-${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     added: '新增',
@@ -862,6 +1198,82 @@ function severityTone(severity: string) {
     low: 'low',
   };
   return tones[severity] ?? 'unknown';
+}
+
+function confidenceLabel(confidence: string) {
+  const labels: Record<string, string> = {
+    high: '高置信',
+    medium: '中置信',
+    low: '低置信',
+  };
+  return labels[confidence] ?? '置信度未知';
+}
+
+function confidenceTone(confidence: string) {
+  const tones: Record<string, string> = {
+    high: 'high',
+    medium: 'medium',
+    low: 'low',
+  };
+  return tones[confidence] ?? 'unknown';
+}
+
+function buildReviewMarkdown(summary: PullRequestSummary) {
+  const review = summary.aiReview;
+  if (!review) {
+    return '';
+  }
+
+  const lines = [
+    '## AI Review',
+    '',
+    `**PR**: ${summary.owner}/${summary.repository}#${summary.pullNumber}`,
+    `**模型**: ${review.providerId || 'default'} / ${review.modelId || '未配置模型'}`,
+    '',
+    '### 变更总结',
+    review.summary || 'AI Review 未返回摘要。',
+    '',
+    '### 风险代码识别',
+  ];
+
+  if (review.riskItems.length === 0) {
+    lines.push('- 未识别出明确风险。');
+  } else {
+    review.riskItems.forEach((item, index) => {
+      lines.push(
+        `${index + 1}. **${severityLabel(item.severity)} / ${confidenceLabel(item.confidence)}** ${item.title || '未命名风险'}`,
+        `   - 文件：\`${item.file || '未指定文件'}\``,
+        `   - 详情：${item.detail || '模型未返回风险详情。'}`,
+        `   - 依据：${item.evidence || '模型未返回明确依据。'}`,
+        `   - 影响：${item.impact || '模型未返回影响说明。'}`,
+        `   - 建议：${item.recommendation || '模型未返回修复建议。'}`
+      );
+      if (item.needsHumanReview) {
+        lines.push('   - 标记：需要人工确认');
+      }
+    });
+  }
+
+  appendMarkdownGroup(lines, '### 必须修改', review.requiredActions, '暂无必须修改项。');
+  appendMarkdownGroup(lines, '### 建议优化', review.suggestions, '暂无建议优化项。');
+  appendMarkdownGroup(lines, '### 后续处理', review.followUpItems, '暂无后续处理项。');
+
+  if ((review.limitations?.length ?? 0) > 0) {
+    appendMarkdownGroup(lines, '### 判断限制', review.limitations, '');
+  }
+
+  return lines.join('\n').trim();
+}
+
+function appendMarkdownGroup(lines: string[], title: string, items: string[] = [], emptyText: string) {
+  lines.push('', title);
+  if (items.length === 0) {
+    if (emptyText) {
+      lines.push(`- ${emptyText}`);
+    }
+    return;
+  }
+  items.forEach((item) => lines.push(`- ${item}`));
 }
 
 function buildModelConfigPayload(modelConfig: ModelFormState) {

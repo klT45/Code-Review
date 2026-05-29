@@ -76,7 +76,10 @@ public record PullRequestSummaryResponse(
             String modelId,
             String summary,
             List<AiRiskItemResponse> riskItems,
+            List<String> requiredActions,
             List<String> suggestions,
+            List<String> followUpItems,
+            List<String> limitations,
             String markdown,
             String message
     ) {
@@ -87,6 +90,10 @@ public record PullRequestSummaryResponse(
             String file,
             String title,
             String detail,
+            String evidence,
+            String impact,
+            String confidence,
+            boolean needsHumanReview,
             String recommendation
     ) {
     }

@@ -4,6 +4,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -97,9 +99,16 @@ class PullRequestSummaryControllerTests {
                         "src/main/java/ReviewService.java",
                         "需要关注异常处理",
                         "新增逻辑可能缺少上游错误兜底。",
+                        "catch 分支直接返回空响应。",
+                        "调用方可能无法识别失败原因。",
+                        "medium",
+                        true,
                         "补充失败场景测试。"
                 )),
+                List.of("合并前补充失败兜底。"),
                 List.of("补充异常路径测试。"),
+                List.of("后续统一错误响应格式。"),
+                List.of("测试文件没有 patch 内容。"),
                 "## AI Review\n- 新增 PR 摘要接口。"
         ));
 
@@ -130,7 +139,94 @@ class PullRequestSummaryControllerTests {
                 .andExpect(jsonPath("$.aiReview.providerId").value("deepseek"))
                 .andExpect(jsonPath("$.aiReview.summary").value("新增 PR 摘要接口。"))
                 .andExpect(jsonPath("$.aiReview.riskItems[0].severity").value("medium"))
+                .andExpect(jsonPath("$.aiReview.riskItems[0].evidence").value("catch 分支直接返回空响应。"))
+                .andExpect(jsonPath("$.aiReview.riskItems[0].needsHumanReview").value(true))
+                .andExpect(jsonPath("$.aiReview.requiredActions[0]").value("合并前补充失败兜底。"))
+                .andExpect(jsonPath("$.aiReview.followUpItems[0]").value("后续统一错误响应格式。"))
+                .andExpect(jsonPath("$.aiReview.limitations[0]").value("测试文件没有 patch 内容。"))
                 .andExpect(jsonPath("$.aiReview.markdown", containsString("AI Review")));
+    }
+
+    @Test
+    void returnsBasicSummaryWithoutAiReview() throws Exception {
+        when(pullRequestClient.fetch(any(GitHubPullRequestUrl.class), isNull())).thenReturn(new GitHubPullRequestInfo(
+                "Add summary endpoint",
+                "octocat",
+                "open",
+                false,
+                false,
+                "feature/summary",
+                "main",
+                12,
+                3,
+                1,
+                "https://github.com/openai/openai-java/pull/42"
+        ));
+        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class), isNull())).thenReturn(List.of(
+                new GitHubPullRequestFile(
+                        "src/main/java/ReviewService.java",
+                        "modified",
+                        12,
+                        3,
+                        15,
+                        "@@ -1,3 +1,4 @@",
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        ));
+
+        mockMvc.perform(post("/api/pull-requests/summary/basic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"prUrl":"https://github.com/openai/openai-java/pull/42"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Add summary endpoint"))
+                .andExpect(jsonPath("$.aiReview").doesNotExist())
+                .andExpect(jsonPath("$.files[0].filename").value("src/main/java/ReviewService.java"));
+
+        verify(aiReviewService, never()).review(any(), any());
+    }
+
+    @Test
+    void returnsAiReviewOnly() throws Exception {
+        when(pullRequestClient.fetch(any(GitHubPullRequestUrl.class), isNull())).thenReturn(new GitHubPullRequestInfo(
+                "Add summary endpoint",
+                "octocat",
+                "open",
+                false,
+                false,
+                "feature/summary",
+                "main",
+                12,
+                3,
+                1,
+                "https://github.com/openai/openai-java/pull/42"
+        ));
+        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class), isNull())).thenReturn(List.of());
+        when(aiReviewService.review(any(), any())).thenReturn(AiReviewResult.generated(
+                "deepseek",
+                "deepseek-chat",
+                "AI Review 摘要。",
+                List.of(),
+                List.of("合并前确认异常路径。"),
+                List.of("补充测试。"),
+                List.of(),
+                List.of(),
+                "## AI Review"
+        ));
+
+        mockMvc.perform(post("/api/pull-requests/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"prUrl":"https://github.com/openai/openai-java/pull/42"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.generated").value(true))
+                .andExpect(jsonPath("$.summary").value("AI Review 摘要。"))
+                .andExpect(jsonPath("$.requiredActions[0]").value("合并前确认异常路径。"));
     }
 
     @Test
