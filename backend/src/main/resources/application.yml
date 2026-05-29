@@ -10,6 +10,11 @@ app:
         base-url: https://api.deepseek.com
         model-id: deepseek-chat
         api-key-env: DEEPSEEK_API_KEY
+      - id: custom
+        display-name: Custom compatible model
+        base-url: https://api.deepseek.com
+        model-id: deepseek-chat
+        api-key-env: AI_MODEL_API_KEY
 
 server:
   port: 8080

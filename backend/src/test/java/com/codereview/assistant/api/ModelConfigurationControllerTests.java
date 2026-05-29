@@ -34,7 +34,12 @@ import org.springframework.test.web.servlet.MockMvc;
         "app.model.providers[0].display-name=DeepSeek",
         "app.model.providers[0].base-url=https://api.deepseek.com",
         "app.model.providers[0].model-id=deepseek-chat",
-        "app.model.providers[0].api-key-env=DEEPSEEK_API_KEY"
+        "app.model.providers[0].api-key-env=DEEPSEEK_API_KEY",
+        "app.model.providers[1].id=custom",
+        "app.model.providers[1].display-name=Custom compatible model",
+        "app.model.providers[1].base-url=https://api.deepseek.com",
+        "app.model.providers[1].model-id=deepseek-chat",
+        "app.model.providers[1].api-key-env=AI_MODEL_API_KEY"
 })
 class ModelConfigurationControllerTests {
 
@@ -49,7 +54,9 @@ class ModelConfigurationControllerTests {
                 .andExpect(jsonPath("$.providers[0].id").value("deepseek"))
                 .andExpect(jsonPath("$.providers[0].baseUrl").value("https://api.deepseek.com"))
                 .andExpect(jsonPath("$.providers[0].modelId").value("deepseek-chat"))
-                .andExpect(jsonPath("$.providers[0].apiKeyEnv").value("DEEPSEEK_API_KEY"));
+                .andExpect(jsonPath("$.providers[0].apiKeyEnv").value("DEEPSEEK_API_KEY"))
+                .andExpect(jsonPath("$.providers[1].id").value("custom"))
+                .andExpect(jsonPath("$.providers[1].apiKeyEnv").value("AI_MODEL_API_KEY"));
     }
 
     @Test

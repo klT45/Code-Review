@@ -17,6 +17,13 @@ class ModelConfigurationServiceTests {
             "deepseek-chat",
             "DEEPSEEK_API_KEY"
     );
+    private static final AppProperties.Provider CUSTOM = new AppProperties.Provider(
+            "custom",
+            "Custom compatible model",
+            "https://api.deepseek.com",
+            "deepseek-chat",
+            "AI_MODEL_API_KEY"
+    );
 
     @Test
     void exposesDefaultProviderWithoutLeakingApiKey() {
@@ -27,12 +34,17 @@ class ModelConfigurationServiceTests {
         AiModelProviderOptions options = service.options();
 
         assertThat(options.defaultProviderId()).isEqualTo("deepseek");
-        assertThat(options.providers()).singleElement().satisfies(provider -> {
+        assertThat(options.providers()).first().satisfies(provider -> {
             assertThat(provider.id()).isEqualTo("deepseek");
             assertThat(provider.baseUrl()).isEqualTo("https://api.deepseek.com");
             assertThat(provider.modelId()).isEqualTo("deepseek-chat");
             assertThat(provider.apiKeyEnv()).isEqualTo("DEEPSEEK_API_KEY");
             assertThat(provider.apiKeyAvailable()).isTrue();
+        });
+        assertThat(options.providers()).anySatisfy(provider -> {
+            assertThat(provider.id()).isEqualTo("custom");
+            assertThat(provider.apiKeyEnv()).isEqualTo("AI_MODEL_API_KEY");
+            assertThat(provider.apiKeyAvailable()).isFalse();
         });
     }
 
@@ -71,6 +83,24 @@ class ModelConfigurationServiceTests {
     }
 
     @Test
+    void resolvesCustomProviderFromRequestFields() {
+        ModelConfigurationService service = service(new MockEnvironment());
+
+        ResolvedAiModelConfig config = service.resolve(new AiModelConfigInput(
+                "custom",
+                "https://openrouter.ai/api",
+                "custom-review-model",
+                "request-api-key"
+        ));
+
+        assertThat(config.providerId()).isEqualTo("custom");
+        assertThat(config.baseUrl()).isEqualTo("https://openrouter.ai/api");
+        assertThat(config.modelId()).isEqualTo("custom-review-model");
+        assertThat(config.apiKey()).isEqualTo("request-api-key");
+        assertThat(config.ready()).isTrue();
+    }
+
+    @Test
     void missingApiKeyKeepsConfigurationNotReady() {
         ModelConfigurationService service = service(new MockEnvironment());
 
@@ -104,7 +134,7 @@ class ModelConfigurationServiceTests {
                 new AppProperties(
                         "AI PR Review Assistant",
                         new AppProperties.GitHub(false),
-                        new AppProperties.Model("deepseek", List.of(DEEPSEEK))
+                        new AppProperties.Model("deepseek", List.of(DEEPSEEK, CUSTOM))
                 ),
                 environment
         );
