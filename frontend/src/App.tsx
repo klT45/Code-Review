@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileCode2,
   Files,
+  Github,
   GitPullRequestArrow,
   Loader2,
   SlidersHorizontal,
@@ -147,6 +148,8 @@ export function App() {
   const [modelConfig, setModelConfig] = useState<ModelFormState>(emptyModelForm);
   const [modelConfigError, setModelConfigError] = useState('');
   const [isModelPanelOpen, setIsModelPanelOpen] = useState(false);
+  const [githubToken, setGithubToken] = useState('');
+  const [isGitHubPanelOpen, setIsGitHubPanelOpen] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -190,19 +193,20 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!isModelPanelOpen) {
+    if (!isModelPanelOpen && !isGitHubPanelOpen) {
       return undefined;
     }
 
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsModelPanelOpen(false);
+        setIsGitHubPanelOpen(false);
       }
     }
 
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isModelPanelOpen]);
+  }, [isGitHubPanelOpen, isModelPanelOpen]);
 
   const changeSize = useMemo(() => {
     if (!summary) {
@@ -279,6 +283,7 @@ export function App() {
         body: JSON.stringify({
           prUrl: prUrl.trim(),
           modelConfig: buildModelConfigPayload(modelConfig),
+          githubToken: githubToken.trim() || undefined,
         }),
       });
 
@@ -341,8 +346,23 @@ export function App() {
             </div>
           </form>
           <p className="hint">
-            当前支持公开 GitHub PR 的基础摘要、变更文件获取与 AI Review。后续会继续接入私有仓库 Token。
+            当前支持公开与私有 GitHub PR 的基础摘要、变更文件获取与 AI Review。私有仓库可在 GitHub 访问设置中提供 Token。
           </p>
+          <div className="access-toolbar" aria-label="访问配置">
+            <button
+              className="secondary-button access-button"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={isGitHubPanelOpen}
+              onClick={() => setIsGitHubPanelOpen(true)}
+            >
+              <Github aria-hidden="true" size={17} />
+              GitHub 访问
+              <span className={`access-state ${githubToken.trim() ? 'ready' : ''}`}>
+                {githubToken.trim() ? 'Token 已填写' : '公开模式'}
+              </span>
+            </button>
+          </div>
           {error && (
             <div className="alert" role="alert">
               <AlertTriangle aria-hidden="true" size={18} />
@@ -435,6 +455,62 @@ export function App() {
 
               <div className="model-dialog-actions">
                 <button className="secondary-button" type="button" onClick={() => setIsModelPanelOpen(false)}>
+                  完成
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {isGitHubPanelOpen && (
+          <div className="model-dialog-backdrop" role="presentation" onMouseDown={() => setIsGitHubPanelOpen(false)}>
+            <section
+              className="model-dialog compact-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="github-dialog-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="model-dialog-header">
+                <div>
+                  <p className="eyebrow">GitHub access</p>
+                  <h2 id="github-dialog-title">GitHub 访问设置</h2>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="关闭 GitHub 访问设置"
+                  onClick={() => setIsGitHubPanelOpen(false)}
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
+              </div>
+
+              <div className="token-note">
+                <Github aria-hidden="true" size={20} />
+                <div>
+                  <strong>{githubToken.trim() ? 'Token 将用于本次分析请求' : '未填写 Token 时使用公开访问'}</strong>
+                  <p>Token 只保存在当前页面内存中，不会写入仓库、日志或浏览器存储。</p>
+                </div>
+              </div>
+
+              <div className="token-fields">
+                <label htmlFor="github-token">GitHub Token</label>
+                <input
+                  id="github-token"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="github_pat_... 或 ghp_..."
+                  value={githubToken}
+                  onChange={(event) => setGithubToken(event.target.value)}
+                />
+              </div>
+
+              <div className="model-dialog-actions">
+                <button className="secondary-button" type="button" onClick={() => setGithubToken('')}>
+                  清空
+                </button>
+                <button className="secondary-button" type="button" onClick={() => setIsGitHubPanelOpen(false)}>
                   完成
                 </button>
               </div>

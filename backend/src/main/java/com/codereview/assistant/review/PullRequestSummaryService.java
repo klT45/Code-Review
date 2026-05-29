@@ -37,13 +37,21 @@ public class PullRequestSummaryService {
     }
 
     public PullRequestSummaryResponse summarize(String rawPullRequestUrl) {
-        return summarize(rawPullRequestUrl, new AiReviewRequest(null));
+        return summarize(rawPullRequestUrl, new AiReviewRequest(null), null);
     }
 
     public PullRequestSummaryResponse summarize(String rawPullRequestUrl, AiReviewRequest aiReviewRequest) {
+        return summarize(rawPullRequestUrl, aiReviewRequest, null);
+    }
+
+    public PullRequestSummaryResponse summarize(
+            String rawPullRequestUrl,
+            AiReviewRequest aiReviewRequest,
+            String githubToken
+    ) {
         GitHubPullRequestUrl pullRequestUrl = urlParser.parse(rawPullRequestUrl);
-        GitHubPullRequestInfo info = pullRequestClient.fetch(pullRequestUrl);
-        List<GitHubPullRequestFile> changedFiles = pullRequestClient.fetchFiles(pullRequestUrl);
+        GitHubPullRequestInfo info = pullRequestClient.fetch(pullRequestUrl, githubToken);
+        List<GitHubPullRequestFile> changedFiles = pullRequestClient.fetchFiles(pullRequestUrl, githubToken);
         ReviewContext reviewContext = reviewContextBuilder.build(pullRequestUrl, info, changedFiles);
         AiReviewResult aiReview = aiReviewService.review(reviewContext, aiReviewRequest.modelConfig());
         List<PullRequestSummaryResponse.PullRequestFileResponse> files = changedFiles
