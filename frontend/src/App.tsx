@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  X,
 } from 'lucide-react';
 
 type ReviewContext = {
@@ -188,6 +189,21 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isModelPanelOpen) {
+      return undefined;
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsModelPanelOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isModelPanelOpen]);
+
   const changeSize = useMemo(() => {
     if (!summary) {
       return null;
@@ -287,10 +303,20 @@ export function App() {
             <p className="eyebrow">AI PR Review Assistant</p>
             <h1 id="page-title">PR Review 工作台</h1>
           </div>
-          <div className="status-pill">
-            <ServerCog aria-hidden="true" size={18} />
-            AI 模型可切换
-          </div>
+          <button
+            className="model-settings-trigger"
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isModelPanelOpen}
+            onClick={() => setIsModelPanelOpen(true)}
+          >
+            <span className={`model-ready-dot ${modelReady ? 'ready' : ''}`} aria-hidden="true" />
+            <span>
+              <strong>{selectedProvider?.displayName ?? '模型'}</strong>
+              <small>{modelConfig.modelId || '未配置'}</small>
+            </span>
+            <SlidersHorizontal aria-hidden="true" size={18} />
+          </button>
         </header>
 
         <section className="review-panel" aria-label="PR 分析入口">
@@ -325,83 +351,96 @@ export function App() {
           )}
         </section>
 
-        <section className={`model-panel ${isModelPanelOpen ? 'expanded' : ''}`} aria-label="AI 模型配置">
-          <div className="model-panel-header">
-            <div>
-              <p className="eyebrow">Model switch</p>
-              <h2>模型切换</h2>
-            </div>
-            <button
-              className="secondary-button"
-              type="button"
-              aria-expanded={isModelPanelOpen}
-              onClick={() => setIsModelPanelOpen((open) => !open)}
+        {isModelPanelOpen && (
+          <div className="model-dialog-backdrop" role="presentation" onMouseDown={() => setIsModelPanelOpen(false)}>
+            <section
+              className="model-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="model-dialog-title"
+              onMouseDown={(event) => event.stopPropagation()}
             >
-              <SlidersHorizontal aria-hidden="true" size={17} />
-              {isModelPanelOpen ? '收起配置' : '调整模型'}
-            </button>
-          </div>
-
-          <div className="model-current-line">
-            <div className={`model-ready-dot ${modelReady ? 'ready' : ''}`} aria-hidden="true" />
-            <span>{selectedProvider?.displayName ?? '自定义模型'}</span>
-            <strong>{modelConfig.modelId || '未配置模型'}</strong>
-            <em>{modelReady ? '就绪' : '需要 Key'}</em>
-          </div>
-
-          {modelConfigError && (
-            <div className="model-warning" role="alert">
-              <AlertTriangle aria-hidden="true" size={17} />
-              {modelConfigError}
-            </div>
-          )}
-
-          {isModelPanelOpen && (
-            <div className="model-config-grid">
-              <div className="provider-switch" role="group" aria-label="模型供应商">
-                {(modelOptions?.providers ?? []).map((provider) => (
-                  <button
-                    className={`provider-option ${provider.id === modelConfig.providerId ? 'active' : ''}`}
-                    type="button"
-                    key={provider.id}
-                    onClick={() => selectProvider(provider)}
-                  >
-                    <Bot aria-hidden="true" size={17} />
-                    <span>{provider.displayName}</span>
-                    <small>{provider.apiKeyAvailable ? '环境 Key 已就绪' : provider.apiKeyEnv}</small>
-                  </button>
-                ))}
+              <div className="model-dialog-header">
+                <div>
+                  <p className="eyebrow">Model switch</p>
+                  <h2 id="model-dialog-title">模型设置</h2>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="关闭模型设置"
+                  onClick={() => setIsModelPanelOpen(false)}
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
               </div>
 
-              <div className="model-fields">
-                <label htmlFor="model-base-url">Base URL</label>
-                <input
-                  id="model-base-url"
-                  type="url"
-                  value={modelConfig.baseUrl}
-                  onChange={(event) => updateModelConfig('baseUrl', event.target.value)}
-                />
-
-                <label htmlFor="model-id">Model ID</label>
-                <input
-                  id="model-id"
-                  value={modelConfig.modelId}
-                  onChange={(event) => updateModelConfig('modelId', event.target.value)}
-                />
-
-                <label htmlFor="model-api-key">API Key</label>
-                <input
-                  id="model-api-key"
-                  type="password"
-                  autoComplete="off"
-                  placeholder={selectedProvider?.apiKeyAvailable ? '使用本机环境变量' : 'sk-...'}
-                  value={modelConfig.apiKey}
-                  onChange={(event) => updateModelConfig('apiKey', event.target.value)}
-                />
+              <div className="model-current-line">
+                <div className={`model-ready-dot ${modelReady ? 'ready' : ''}`} aria-hidden="true" />
+                <span>{selectedProvider?.displayName ?? '自定义模型'}</span>
+                <strong>{modelConfig.modelId || '未配置模型'}</strong>
+                <em>{modelReady ? '就绪' : '需要 Key'}</em>
               </div>
-            </div>
-          )}
-        </section>
+
+              {modelConfigError && (
+                <div className="model-warning" role="alert">
+                  <AlertTriangle aria-hidden="true" size={17} />
+                  {modelConfigError}
+                </div>
+              )}
+
+              <div className="model-config-grid">
+                <div className="provider-switch" role="group" aria-label="模型供应商">
+                  {(modelOptions?.providers ?? []).map((provider) => (
+                    <button
+                      className={`provider-option ${provider.id === modelConfig.providerId ? 'active' : ''}`}
+                      type="button"
+                      key={provider.id}
+                      onClick={() => selectProvider(provider)}
+                    >
+                      <Bot aria-hidden="true" size={17} />
+                      <span>{provider.displayName}</span>
+                      <small>{provider.apiKeyAvailable ? '环境 Key 已就绪' : provider.apiKeyEnv}</small>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="model-fields">
+                  <label htmlFor="model-base-url">Base URL</label>
+                  <input
+                    id="model-base-url"
+                    type="url"
+                    value={modelConfig.baseUrl}
+                    onChange={(event) => updateModelConfig('baseUrl', event.target.value)}
+                  />
+
+                  <label htmlFor="model-id">Model ID</label>
+                  <input
+                    id="model-id"
+                    value={modelConfig.modelId}
+                    onChange={(event) => updateModelConfig('modelId', event.target.value)}
+                  />
+
+                  <label htmlFor="model-api-key">API Key</label>
+                  <input
+                    id="model-api-key"
+                    type="password"
+                    autoComplete="off"
+                    placeholder={selectedProvider?.apiKeyAvailable ? '使用本机环境变量' : 'sk-...'}
+                    value={modelConfig.apiKey}
+                    onChange={(event) => updateModelConfig('apiKey', event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="model-dialog-actions">
+                <button className="secondary-button" type="button" onClick={() => setIsModelPanelOpen(false)}>
+                  完成
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         {summary && (
           <>
