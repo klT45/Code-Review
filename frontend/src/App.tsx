@@ -1,7 +1,8 @@
-import { CSSProperties, FormEvent, useMemo, useState } from 'react';
+import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Bot,
   CheckCircle2,
   ClipboardCopy,
   ExternalLink,
@@ -9,10 +10,12 @@ import {
   Files,
   GitPullRequestArrow,
   Loader2,
+  SlidersHorizontal,
   ServerCog,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  X,
 } from 'lucide-react';
 
 type ReviewContext = {
@@ -98,6 +101,27 @@ type PullRequestSummary = {
   aiReview: AiReview | null;
 };
 
+type ModelProvider = {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  modelId: string;
+  apiKeyEnv: string;
+  apiKeyAvailable: boolean;
+};
+
+type ModelConfigurationOptions = {
+  defaultProviderId: string;
+  providers: ModelProvider[];
+};
+
+type ModelFormState = {
+  providerId: string;
+  baseUrl: string;
+  modelId: string;
+  apiKey: string;
+};
+
 type ApiError = {
   code: string;
   message: string;
@@ -106,6 +130,12 @@ type ApiError = {
 
 const sampleUrl = 'https://github.com/klT45/Code-Review/pull/2';
 const maxTrackItems = 12;
+const emptyModelForm: ModelFormState = {
+  providerId: '',
+  baseUrl: '',
+  modelId: '',
+  apiKey: '',
+};
 
 export function App() {
   const [prUrl, setPrUrl] = useState('');
@@ -113,6 +143,66 @@ export function App() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [modelOptions, setModelOptions] = useState<ModelConfigurationOptions | null>(null);
+  const [modelConfig, setModelConfig] = useState<ModelFormState>(emptyModelForm);
+  const [modelConfigError, setModelConfigError] = useState('');
+  const [isModelPanelOpen, setIsModelPanelOpen] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadModelOptions() {
+      try {
+        const response = await fetch('/api/model-config');
+        if (!response.ok) {
+          const apiError = (await response.json()) as ApiError;
+          throw new Error(apiError.message || '获取模型配置失败。');
+        }
+
+        const options = (await response.json()) as ModelConfigurationOptions;
+        if (!isActive) {
+          return;
+        }
+
+        const defaultProvider = options.providers.find((provider) => provider.id === options.defaultProviderId)
+          ?? options.providers[0];
+        setModelOptions(options);
+        if (defaultProvider) {
+          setModelConfig({
+            providerId: defaultProvider.id,
+            baseUrl: defaultProvider.baseUrl,
+            modelId: defaultProvider.modelId,
+            apiKey: '',
+          });
+        }
+      } catch (caughtError) {
+        if (isActive) {
+          setModelConfigError(caughtError instanceof Error ? caughtError.message : '获取模型配置失败。');
+        }
+      }
+    }
+
+    loadModelOptions();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isModelPanelOpen) {
+      return undefined;
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsModelPanelOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isModelPanelOpen]);
 
   const changeSize = useMemo(() => {
     if (!summary) {
@@ -160,6 +250,14 @@ export function App() {
     };
   }, [summary]);
 
+  const selectedProvider = useMemo(() => {
+    return modelOptions?.providers.find((provider) => provider.id === modelConfig.providerId) ?? null;
+  }, [modelConfig.providerId, modelOptions]);
+
+  const modelReady = Boolean((modelConfig.apiKey.trim() || selectedProvider?.apiKeyAvailable)
+    && modelConfig.baseUrl.trim()
+    && modelConfig.modelId.trim());
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -178,7 +276,10 @@ export function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prUrl: prUrl.trim() }),
+        body: JSON.stringify({
+          prUrl: prUrl.trim(),
+          modelConfig: buildModelConfigPayload(modelConfig),
+        }),
       });
 
       if (!response.ok) {
@@ -202,10 +303,20 @@ export function App() {
             <p className="eyebrow">AI PR Review Assistant</p>
             <h1 id="page-title">PR Review 工作台</h1>
           </div>
-          <div className="status-pill">
-            <ServerCog aria-hidden="true" size={18} />
-            已接入变更文件
-          </div>
+          <button
+            className="model-settings-trigger"
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isModelPanelOpen}
+            onClick={() => setIsModelPanelOpen(true)}
+          >
+            <span className={`model-ready-dot ${modelReady ? 'ready' : ''}`} aria-hidden="true" />
+            <span>
+              <strong>{selectedProvider?.displayName ?? '模型'}</strong>
+              <small>{modelConfig.modelId || '未配置'}</small>
+            </span>
+            <SlidersHorizontal aria-hidden="true" size={18} />
+          </button>
         </header>
 
         <section className="review-panel" aria-label="PR 分析入口">
@@ -230,7 +341,7 @@ export function App() {
             </div>
           </form>
           <p className="hint">
-            当前支持公开 GitHub PR 的基础摘要、变更文件获取与 AI Review。后续会继续接入私有仓库 Token 和模型切换。
+            当前支持公开 GitHub PR 的基础摘要、变更文件获取与 AI Review。后续会继续接入私有仓库 Token。
           </p>
           {error && (
             <div className="alert" role="alert">
@@ -239,6 +350,97 @@ export function App() {
             </div>
           )}
         </section>
+
+        {isModelPanelOpen && (
+          <div className="model-dialog-backdrop" role="presentation" onMouseDown={() => setIsModelPanelOpen(false)}>
+            <section
+              className="model-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="model-dialog-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="model-dialog-header">
+                <div>
+                  <p className="eyebrow">Model switch</p>
+                  <h2 id="model-dialog-title">模型设置</h2>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="关闭模型设置"
+                  onClick={() => setIsModelPanelOpen(false)}
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
+              </div>
+
+              <div className="model-current-line">
+                <div className={`model-ready-dot ${modelReady ? 'ready' : ''}`} aria-hidden="true" />
+                <span>{selectedProvider?.displayName ?? '自定义模型'}</span>
+                <strong>{modelConfig.modelId || '未配置模型'}</strong>
+                <em>{modelReady ? '就绪' : '需要 Key'}</em>
+              </div>
+
+              {modelConfigError && (
+                <div className="model-warning" role="alert">
+                  <AlertTriangle aria-hidden="true" size={17} />
+                  {modelConfigError}
+                </div>
+              )}
+
+              <div className="model-config-grid">
+                <div className="provider-switch" role="group" aria-label="模型供应商">
+                  {(modelOptions?.providers ?? []).map((provider) => (
+                    <button
+                      className={`provider-option ${provider.id === modelConfig.providerId ? 'active' : ''}`}
+                      type="button"
+                      key={provider.id}
+                      onClick={() => selectProvider(provider)}
+                    >
+                      <Bot aria-hidden="true" size={17} />
+                      <span>{provider.displayName}</span>
+                      <small>{provider.apiKeyAvailable ? '环境 Key 已就绪' : provider.apiKeyEnv}</small>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="model-fields">
+                  <label htmlFor="model-base-url">Base URL</label>
+                  <input
+                    id="model-base-url"
+                    type="url"
+                    value={modelConfig.baseUrl}
+                    onChange={(event) => updateModelConfig('baseUrl', event.target.value)}
+                  />
+
+                  <label htmlFor="model-id">Model ID</label>
+                  <input
+                    id="model-id"
+                    value={modelConfig.modelId}
+                    onChange={(event) => updateModelConfig('modelId', event.target.value)}
+                  />
+
+                  <label htmlFor="model-api-key">API Key</label>
+                  <input
+                    id="model-api-key"
+                    type="password"
+                    autoComplete="off"
+                    placeholder={selectedProvider?.apiKeyAvailable ? '使用本机环境变量' : 'sk-...'}
+                    value={modelConfig.apiKey}
+                    onChange={(event) => updateModelConfig('apiKey', event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="model-dialog-actions">
+                <button className="secondary-button" type="button" onClick={() => setIsModelPanelOpen(false)}>
+                  完成
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         {summary && (
           <>
@@ -519,6 +721,23 @@ export function App() {
       window.setTimeout(() => setCopyState('idle'), 1800);
     }
   }
+
+  function selectProvider(provider: ModelProvider) {
+    setModelConfig((current) => ({
+      ...current,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+      modelId: provider.modelId,
+      apiKey: '',
+    }));
+  }
+
+  function updateModelConfig(field: keyof ModelFormState, value: string) {
+    setModelConfig((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
 }
 
 function SummaryMetric({ label, value }: { label: string; value: string }) {
@@ -567,4 +786,13 @@ function severityTone(severity: string) {
     low: 'low',
   };
   return tones[severity] ?? 'unknown';
+}
+
+function buildModelConfigPayload(modelConfig: ModelFormState) {
+  return {
+    providerId: modelConfig.providerId || undefined,
+    baseUrl: modelConfig.baseUrl.trim() || undefined,
+    modelId: modelConfig.modelId.trim() || undefined,
+    apiKey: modelConfig.apiKey.trim() || undefined,
+  };
 }

@@ -19,7 +19,7 @@ public record AppProperties(
             github = new GitHub(false);
         }
         if (model == null) {
-            model = new Model("deepseek", List.of(defaultDeepSeekProvider()));
+            model = new Model("deepseek", defaultProviders());
         }
     }
 
@@ -34,7 +34,7 @@ public record AppProperties(
             }
             if (providers == null || providers.isEmpty()) {
                 providers = new ArrayList<>();
-                providers.add(defaultDeepSeekProvider());
+                providers.addAll(defaultProviders());
             }
         }
     }
@@ -55,6 +55,19 @@ public record AppProperties(
                 "https://api.deepseek.com",
                 "deepseek-chat",
                 "DEEPSEEK_API_KEY"
+        );
+    }
+
+    private static List<Provider> defaultProviders() {
+        return List.of(
+                defaultDeepSeekProvider(),
+                new Provider(
+                        "custom",
+                        "Custom compatible model",
+                        "https://api.deepseek.com",
+                        "deepseek-chat",
+                        "AI_MODEL_API_KEY"
+                )
         );
     }
 }
