@@ -102,7 +102,8 @@ button {
   background: #dce7d2;
 }
 
-.review-panel {
+.review-panel,
+.summary-panel {
   border: 1px solid var(--ink);
   border-radius: 8px;
   padding: 22px;
@@ -137,8 +138,7 @@ button {
   padding: 0 16px;
 }
 
-button:disabled,
-input:disabled {
+button:disabled {
   cursor: not-allowed;
   opacity: 0.76;
 }
@@ -147,6 +147,113 @@ input:disabled {
   margin: 12px 0 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  border: 1px solid rgba(200, 77, 53, 0.45);
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: #8f2d1e;
+  background: #fff0eb;
+  font-weight: 700;
+}
+
+.summary-panel {
+  margin-top: 28px;
+  box-shadow: none;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.summary-header h2 {
+  margin-bottom: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  line-height: 1.05;
+}
+
+.summary-header a {
+  align-self: flex-start;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.metric {
+  border-left: 3px solid var(--green);
+  padding-left: 12px;
+}
+
+.metric span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.metric strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 1.3rem;
+}
+
+.branch-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.branch-line span {
+  overflow-wrap: anywhere;
+}
+
+.diff-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  font-weight: 900;
+}
+
+.additions {
+  color: var(--green);
+}
+
+.deletions {
+  color: var(--red);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .grid {
@@ -225,8 +332,13 @@ input:disabled {
   }
 
   .grid,
+  .meta-grid,
   .roadmap {
     grid-template-columns: 1fr;
+  }
+
+  .summary-header {
+    display: grid;
   }
 
   button {
