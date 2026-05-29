@@ -9,6 +9,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -85,6 +87,105 @@ class GitHubPullRequestClientTests {
         )))
                 .isInstanceOf(GitHubApiException.class)
                 .hasMessageContaining("not found");
+        server.verify();
+    }
+
+    @Test
+    void fetchesChangedFiles() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GitHubPullRequestClient client = new GitHubPullRequestClient(builder);
+        GitHubPullRequestUrl pullRequestUrl = new GitHubPullRequestUrl(
+                "openai",
+                "openai-java",
+                42,
+                "https://github.com/openai/openai-java/pull/42"
+        );
+
+        server.expect(once(), requestTo("https://api.github.com/repos/openai/openai-java/pulls/42/files?per_page=100&page=1"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.ACCEPT, "application/vnd.github+json"))
+                .andRespond(withSuccess("""
+                        [
+                          {
+                            "filename": "src/main/java/ReviewService.java",
+                            "status": "modified",
+                            "additions": 25,
+                            "deletions": 4,
+                            "changes": 29,
+                            "patch": "@@ -1,3 +1,4 @@",
+                            "blob_url": "https://github.com/openai/openai-java/blob/main/src/main/java/ReviewService.java",
+                            "raw_url": "https://github.com/openai/openai-java/raw/main/src/main/java/ReviewService.java",
+                            "contents_url": "https://api.github.com/repos/openai/openai-java/contents/src/main/java/ReviewService.java"
+                          },
+                          {
+                            "filename": "src/test/java/ReviewServiceTests.java",
+                            "status": "added",
+                            "additions": 80,
+                            "deletions": 0,
+                            "changes": 80
+                          }
+                        ]
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThat(client.fetchFiles(pullRequestUrl))
+                .hasSize(2)
+                .first()
+                .satisfies(file -> {
+                    assertThat(file.filename()).isEqualTo("src/main/java/ReviewService.java");
+                    assertThat(file.status()).isEqualTo("modified");
+                    assertThat(file.additions()).isEqualTo(25);
+                    assertThat(file.deletions()).isEqualTo(4);
+                    assertThat(file.changes()).isEqualTo(29);
+                    assertThat(file.patch()).contains("@@");
+                    assertThat(file.blobUrl()).contains("github.com");
+                });
+        server.verify();
+    }
+
+    @Test
+    void fetchesAllChangedFilePages() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GitHubPullRequestClient client = new GitHubPullRequestClient(builder);
+        GitHubPullRequestUrl pullRequestUrl = new GitHubPullRequestUrl(
+                "openai",
+                "openai-java",
+                42,
+                "https://github.com/openai/openai-java/pull/42"
+        );
+
+        String firstPage = IntStream.rangeClosed(1, 100)
+                .mapToObj(index -> """
+                        {
+                          "filename": "file-%d.java",
+                          "status": "modified",
+                          "additions": 1,
+                          "deletions": 0,
+                          "changes": 1
+                        }
+                        """.formatted(index))
+                .collect(Collectors.joining(",", "[", "]"));
+
+        server.expect(once(), requestTo("https://api.github.com/repos/openai/openai-java/pulls/42/files?per_page=100&page=1"))
+                .andRespond(withSuccess(firstPage, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo("https://api.github.com/repos/openai/openai-java/pulls/42/files?per_page=100&page=2"))
+                .andRespond(withSuccess("""
+                        [
+                          {
+                            "filename": "file-101.java",
+                            "status": "added",
+                            "additions": 2,
+                            "deletions": 0,
+                            "changes": 2
+                          }
+                        ]
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThat(client.fetchFiles(pullRequestUrl))
+                .hasSize(101)
+                .last()
+                .satisfies(file -> assertThat(file.filename()).isEqualTo("file-101.java"));
         server.verify();
     }
 
