@@ -662,7 +662,7 @@ button:disabled {
 .risk-overview {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 16px;
 }
@@ -677,6 +677,10 @@ button:disabled {
 
 .risk-overview .metric:nth-child(3) {
   border-left-color: var(--green);
+}
+
+.risk-overview .metric:nth-child(4) {
+  border-left-color: var(--blue);
 }
 
 .ai-section {
@@ -739,6 +743,41 @@ button:disabled {
   white-space: nowrap;
 }
 
+.confidence-tag,
+.human-review-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.confidence-tag.high {
+  color: var(--green);
+  background: #eef6e9;
+}
+
+.confidence-tag.medium {
+  color: #7a4b00;
+  background: #fbefd9;
+}
+
+.confidence-tag.low,
+.confidence-tag.unknown {
+  color: var(--muted);
+  background: #f7f5ed;
+}
+
+.human-review-tag {
+  border-color: rgba(36, 92, 159, 0.34);
+  color: var(--blue);
+  background: #eaf0f7;
+}
+
 .severity-tag.high {
   border-color: rgba(200, 77, 53, 0.36);
   color: var(--red);
@@ -777,6 +816,33 @@ button:disabled {
   line-height: 1.6;
 }
 
+.risk-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.risk-evidence-grid div,
+.review-action-group {
+  border: 1px solid rgba(23, 32, 27, 0.14);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 253, 244, 0.7);
+}
+
+.risk-evidence-grid strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.risk-evidence-grid span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .risk-recommendation {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -791,6 +857,71 @@ button:disabled {
   color: var(--green);
 }
 
+.review-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.review-action-group {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.review-action-group.required {
+  border-color: rgba(200, 77, 53, 0.28);
+  background: #fff7f4;
+}
+
+.review-action-group.suggested {
+  border-color: rgba(36, 92, 159, 0.24);
+  background: #f0f5fb;
+}
+
+.review-action-group.follow-up {
+  border-color: rgba(185, 115, 23, 0.3);
+  background: #fff8e8;
+}
+
+.review-action-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.review-action-title svg {
+  flex: 0 0 auto;
+}
+
+.review-action-title span {
+  margin-left: auto;
+  border: 1px solid rgba(23, 32, 27, 0.16);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  background: rgba(255, 253, 244, 0.72);
+  font-size: 0.76rem;
+}
+
+.review-action-group ul,
+.limitation-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.review-action-group p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .suggestion-list {
   display: grid;
   gap: 8px;
@@ -798,6 +929,11 @@ button:disabled {
   padding-left: 20px;
   color: var(--ink);
   line-height: 1.6;
+}
+
+.limitation-list {
+  margin-top: 14px;
+  color: #6e4100;
 }
 
 .empty-review,
@@ -1232,6 +1368,8 @@ button:disabled {
   .file-flow,
   .file-row,
   .risk-overview,
+  .risk-evidence-grid,
+  .review-action-grid,
   .context-grid {
     grid-template-columns: 1fr;
   }

@@ -1,10 +1,11 @@
-import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
   Bot,
   CheckCircle2,
   ClipboardCopy,
+  ClipboardList,
   ExternalLink,
   FileCode2,
   Files,
@@ -16,6 +17,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Wrench,
   X,
 } from 'lucide-react';
 
@@ -66,6 +68,10 @@ type AiRiskItem = {
   file: string;
   title: string;
   detail: string;
+  evidence: string;
+  impact: string;
+  confidence: string;
+  needsHumanReview: boolean;
   recommendation: string;
 };
 
@@ -76,7 +82,10 @@ type AiReview = {
   modelId: string;
   summary: string;
   riskItems: AiRiskItem[];
+  requiredActions: string[];
   suggestions: string[];
+  followUpItems: string[];
+  limitations: string[];
   markdown: string;
   message: string;
 };
@@ -251,6 +260,7 @@ export function App() {
       high: riskItems.filter((item) => item.severity === 'high').length,
       medium: riskItems.filter((item) => item.severity === 'medium').length,
       low: riskItems.filter((item) => item.severity === 'low').length,
+      needsHumanReview: riskItems.filter((item) => item.needsHumanReview).length,
     };
   }, [summary]);
 
@@ -584,6 +594,7 @@ export function App() {
                       <SummaryMetric label="高风险" value={reviewStats.high.toString()} />
                       <SummaryMetric label="中风险" value={reviewStats.medium.toString()} />
                       <SummaryMetric label="低风险" value={reviewStats.low.toString()} />
+                      <SummaryMetric label="需确认" value={reviewStats.needsHumanReview.toString()} />
                     </div>
 
                     <div className="ai-section">
@@ -600,10 +611,26 @@ export function App() {
                                 <span className={`severity-tag ${severityTone(item.severity)}`}>
                                   {severityLabel(item.severity)}
                                 </span>
+                                <span className={`confidence-tag ${confidenceTone(item.confidence)}`}>
+                                  {confidenceLabel(item.confidence)}
+                                </span>
+                                {item.needsHumanReview && (
+                                  <span className="human-review-tag">需人工确认</span>
+                                )}
                                 <h4>{item.title || '未命名风险'}</h4>
                               </div>
                               <p className="risk-file">{item.file || '未指定文件'}</p>
                               <p>{item.detail || '模型未返回风险详情。'}</p>
+                              <div className="risk-evidence-grid">
+                                <div>
+                                  <strong>判断依据</strong>
+                                  <span>{item.evidence || '模型未返回明确依据。'}</span>
+                                </div>
+                                <div>
+                                  <strong>可能影响</strong>
+                                  <span>{item.impact || '模型未返回影响说明。'}</span>
+                                </div>
+                              </div>
                               <div className="risk-recommendation">
                                 <strong>建议</strong>
                                 <span>{item.recommendation || '模型未返回修复建议。'}</span>
@@ -622,14 +649,39 @@ export function App() {
                     <div className="ai-section">
                       <div className="ai-section-header">
                         <h3>Review 建议</h3>
-                        <span>{summary.aiReview.suggestions.length} 条</span>
+                        <span>
+                          {(summary.aiReview.requiredActions?.length ?? 0)
+                            + summary.aiReview.suggestions.length
+                            + (summary.aiReview.followUpItems?.length ?? 0)} 条
+                        </span>
                       </div>
-                      {summary.aiReview.suggestions.length > 0 ? (
-                        <ul className="suggestion-list">
-                          {summary.aiReview.suggestions.map((suggestion, index) => (
-                            <li key={`${suggestion}-${index}`}>{suggestion}</li>
-                          ))}
-                        </ul>
+
+                      {(summary.aiReview.requiredActions?.length ?? 0)
+                        + summary.aiReview.suggestions.length
+                        + (summary.aiReview.followUpItems?.length ?? 0) > 0 ? (
+                        <div className="review-action-grid">
+                          <ReviewActionGroup
+                            tone="required"
+                            title="必须修改"
+                            icon={<ShieldAlert aria-hidden="true" size={18} />}
+                            items={summary.aiReview.requiredActions ?? []}
+                            emptyText="暂无必须修改项。"
+                          />
+                          <ReviewActionGroup
+                            tone="suggested"
+                            title="建议优化"
+                            icon={<Wrench aria-hidden="true" size={18} />}
+                            items={summary.aiReview.suggestions}
+                            emptyText="暂无建议优化项。"
+                          />
+                          <ReviewActionGroup
+                            tone="follow-up"
+                            title="后续处理"
+                            icon={<ClipboardList aria-hidden="true" size={18} />}
+                            items={summary.aiReview.followUpItems ?? []}
+                            emptyText="暂无后续处理项。"
+                          />
+                        </div>
                       ) : (
                         <div className="empty-review">
                           <CheckCircle2 aria-hidden="true" size={19} />
@@ -637,6 +689,20 @@ export function App() {
                         </div>
                       )}
                     </div>
+
+                    {(summary.aiReview.limitations?.length ?? 0) > 0 && (
+                      <div className="ai-section">
+                        <div className="ai-section-header">
+                          <h3>判断限制</h3>
+                          <span>{summary.aiReview.limitations.length} 条</span>
+                        </div>
+                        <ul className="limitation-list">
+                          {summary.aiReview.limitations.map((limitation, index) => (
+                            <li key={`${limitation}-${index}`}>{limitation}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     <div className="markdown-box">
                       <div className="markdown-header">
@@ -825,6 +891,39 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ReviewActionGroup({
+  tone,
+  title,
+  icon,
+  items,
+  emptyText,
+}: {
+  tone: 'required' | 'suggested' | 'follow-up';
+  title: string;
+  icon: ReactNode;
+  items: string[];
+  emptyText: string;
+}) {
+  return (
+    <section className={`review-action-group ${tone}`} aria-label={title}>
+      <div className="review-action-title">
+        {icon}
+        <strong>{title}</strong>
+        <span>{items.length}</span>
+      </div>
+      {items.length > 0 ? (
+        <ul>
+          {items.map((item, index) => (
+            <li key={`${title}-${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     added: '新增',
@@ -862,6 +961,24 @@ function severityTone(severity: string) {
     low: 'low',
   };
   return tones[severity] ?? 'unknown';
+}
+
+function confidenceLabel(confidence: string) {
+  const labels: Record<string, string> = {
+    high: '高置信',
+    medium: '中置信',
+    low: '低置信',
+  };
+  return labels[confidence] ?? '置信度未知';
+}
+
+function confidenceTone(confidence: string) {
+  const tones: Record<string, string> = {
+    high: 'high',
+    medium: 'medium',
+    low: 'low',
+  };
+  return tones[confidence] ?? 'unknown';
 }
 
 function buildModelConfigPayload(modelConfig: ModelFormState) {
