@@ -1,143 +1,191 @@
-# Design Notes
+# 设计说明
 
-## Product Goal
+## 目标定位
 
-AI PR Review Assistant helps developers inspect pull requests faster without replacing human review. The tool focuses on three practical review outputs:
+本项目是一个 AI 代码评审辅助工具，目标是帮助开发者提升 Pull Request Review 的效率与质量。它并不试图替代人工 Review，而是把 AI 放在“辅助分析”的位置：
 
-- Change summary: explain what the PR changes.
-- Risk identification: call out risky changed code with evidence.
-- Review suggestions: separate required fixes, recommended improvements, and follow-up items.
+- 先帮助 Reviewer 快速理解 PR 做了什么。
+- 再指出可能需要重点关注的风险代码。
+- 最后整理可以直接用于 Review 评论的建议。
 
-The first version is optimized for GitHub pull requests and OpenAI-compatible chat models, with DeepSeek as the default provider profile.
+因此，系统输出分为三类核心结果：
 
-## Model Choice
+- PR 变更总结。
+- 风险代码识别。
+- Review 建议生成。
 
-The backend uses Spring AI because the project is Java-first and Spring Boot is already the application framework. Spring AI gives the backend a consistent abstraction for chat models while still allowing request-time model configuration.
+这些能力对应 `1.txt` 中对代码评审真实需求的要求：理解上下文、发现问题、控制误报漏报、保持响应速度，并给出清晰的设计说明。
 
-DeepSeek is the default documented provider because it exposes an OpenAI-compatible API and has strong code reasoning capability for the target use case. The implementation does not hard-code DeepSeek-only behavior. Users can provide:
+## 模型选择
 
-- API key
+后端使用 Spring AI 接入大模型，原因有三点：
+
+- 项目技术栈以 Java 和 Spring Boot 为主，Spring AI 与后端结构天然契合。
+- Spring AI 提供模型调用、Prompt 组织和结构化输出相关能力，可以减少手写适配代码。
+- 后续扩展其他模型时，可以保留统一的服务边界。
+
+默认模型提供方是 DeepSeek。选择 DeepSeek 的原因是：
+
+- DeepSeek 提供 OpenAI-compatible API，容易接入 Spring AI 的 OpenAI 模型客户端。
+- `deepseek-chat` 适合作为首版代码评审模型。
+- 成本和可用性适合演示和个人开发场景。
+
+同时，项目没有把能力绑定到 DeepSeek。前端模型设置面板允许用户填写：
+
+- API Key
 - Base URL
 - Model ID
 
-This keeps the application compatible with DeepSeek, OpenAI-compatible gateways, local compatible services, and other providers that follow the same chat completion protocol.
+这使项目可以支持其他 OpenAI-compatible 模型服务，例如 OpenAI 兼容网关、团队内部模型服务或本地兼容服务。
 
-## Context Acquisition
+## 上下文获取方式
 
-The backend receives a GitHub PR URL and parses:
+用户输入 GitHub PR 链接后，后端会解析：
 
-- Owner
-- Repository
-- Pull request number
+- owner
+- repository
+- pull request number
 
-It then uses the GitHub REST API to fetch:
+随后通过 GitHub REST API 获取：
 
-- PR title, author, state, branch information, additions, deletions, changed file count
-- Changed file list
-- File status
-- File additions, deletions, changes
-- Patch snippets when GitHub provides them
+- PR 标题、作者、状态、是否 draft、是否 merged。
+- head/base 分支。
+- additions、deletions、changed files。
+- 变更文件列表。
+- 文件状态、增删行数、总变更数。
+- GitHub 返回的 patch 内容。
 
-Public repositories work without a token. Private repositories and higher public rate limits are supported through either:
+公开仓库可以直接获取。私有仓库支持两种方式：
 
-- Request-scoped GitHub token from the frontend
-- `GITHUB_TOKEN` environment variable on the backend
+- 用户在前端输入 GitHub Token，用于本次请求。
+- 后端设置 `GITHUB_TOKEN` 环境变量。
 
-Tokens are not written to source files or browser storage.
+这些信息会被整理成 Review 上下文，作为模型判断 PR 变更意图和潜在风险的依据。
 
-## Context Compression
+## 上下文压缩策略
 
-Pull requests can contain large diffs, generated files, lock files, or files where GitHub does not return patch content. Sending everything directly to a model would be slow, expensive, and often less accurate.
+PR diff 可能非常大，如果直接全部发送给模型，会带来三个问题：
 
-The review context builder therefore prioritizes:
+- 响应慢。
+- 成本高。
+- 模型容易在长上下文中忽略真正重要的变更。
 
-- PR metadata
-- File list and change sizes
-- Available patch snippets
-- Per-file patch availability
-- Truncation notes
+当前系统采用保守的上下文压缩策略：
 
-Current limits:
+- 优先保留 PR 标题、作者、分支、变更规模。
+- 保留完整文件列表和每个文件的变更统计。
+- 优先发送 GitHub 返回的 patch 片段。
+- 对单文件 patch 设置最大字符数。
+- 对整体 prompt 设置最大字符数。
+- 对被截断或缺失 patch 的文件记录限制说明。
 
-- Maximum patch characters per file: `4000`
-- Maximum prompt characters: `20000`
+当前限制：
 
-When a file patch is truncated or unavailable, the backend records a limitation note. The frontend exposes context statistics so users can see whether the model had full or partial diff context.
+- 单文件 patch 最大字符数：`4000`
+- 整体 prompt 最大字符数：`20000`
 
-## Review Prompting
+前端会展示上下文字符数、可用 patch 数量和截断文件数量，让用户知道 AI 的判断是否基于完整上下文。
 
-The AI prompt asks the model to focus on concrete production risks and changed code. It explicitly instructs the model to:
+## AI Review 输出设计
 
-- Cite evidence from the provided context.
-- Avoid inventing files or code.
-- Treat weak evidence as low confidence.
-- Mark uncertain findings as requiring human review.
-- Separate blocking fixes, suggestions, and follow-up items.
-- Mention context limitations when patches are missing or truncated.
+AI Review 输出不是一段自由文本，而是结构化结果。当前包含：
 
-The output contract is represented as Java records and converted with Spring AI `BeanOutputConverter`. This reduces drift between prompt format, parser expectations, and API response shape.
+- `summary`：PR 变更总结。
+- `riskItems`：风险项列表。
+- `requiredActions`：合并前必须处理的问题。
+- `suggestions`：建议优化项。
+- `followUpItems`：后续可跟进事项。
+- `limitations`：判断限制。
+- `markdown`：可复制到 GitHub 的 Review 评论。
 
-## False Positive and False Negative Control
+风险项会包含：
 
-The tool is intentionally conservative. It should help reviewers focus attention, not pretend to be a final authority.
+- 严重级别。
+- 文件路径。
+- 风险标题。
+- 详细说明。
+- 证据。
+- 影响。
+- 置信度。
+- 是否需要人工确认。
+- 修改建议。
 
-Controls for false positives:
+后端使用 Java record 定义输出结构，并通过 Spring AI `BeanOutputConverter` 生成结构化输出约束，减少 Prompt、解析器和接口响应之间的格式漂移。
 
-- Each risk item must include evidence.
-- Risk items without evidence are downgraded to low confidence.
-- Unknown or unclear files are marked as requiring human review.
-- Generic style preferences are discouraged unless the diff shows concrete maintainability or correctness risk.
-- Generated files, documentation-only changes, lock files, and styling-only changes are treated as lower risk unless evidence suggests otherwise.
+## 误报控制
 
-Controls for false negatives:
+AI 代码评审最容易出现的问题是“看起来专业但证据不足”。为了降低误报，系统做了以下约束：
 
-- PR metadata and file-level change stats are always included, even when patches are missing.
-- Truncation and missing patch notes are surfaced in the result.
-- The model is asked to produce follow-up items when context is insufficient.
-- The frontend keeps the changed file list visible so users can still inspect files outside the model context.
+- Prompt 要求每个风险项必须引用上下文证据。
+- 不允许模型编造文件或代码。
+- 如果证据不足，置信度降为 low。
+- 如果文件路径不明确，标记为需要人工确认。
+- 对纯文档、样式、lock 文件、生成文件等变更默认降低风险判断。
+- 后端质量校验层会标准化严重级别和置信度。
+- 后端会把缺少证据的风险项标记为需要人工确认。
 
-## Response Speed and User Experience
+这让 AI 输出更像“Review 线索”，而不是未经验证的结论。
 
-AI Review can take several seconds. To avoid a frozen interface, the frontend splits the workflow:
+## 漏报控制
 
-1. Start PR information fetching and AI Review generation together.
-2. Show the PR information panel as soon as GitHub data is available.
-3. Continue AI Review in the background.
-4. Let the user open the AI Review tab when ready.
+为了减少漏报，系统不会只依赖 patch 片段：
 
-This gives immediate feedback, supports large PRs better, and makes configuration or GitHub API errors easier to understand.
+- 即使 patch 缺失，也保留文件名、状态和变更规模。
+- 被截断或缺失的上下文会进入 `limitations`。
+- 前端始终展示完整变更文件列表，方便人工继续检查。
+- AI 可以输出后续事项，提醒 Reviewer 对上下文不足的部分做人工复核。
 
-## Error Handling
+这种设计承认 AI 无法看到完整仓库状态，但尽量把“不确定性”显式暴露给用户。
 
-The backend returns clear API errors for:
+## 响应速度与使用体验
 
-- Invalid PR URL
-- GitHub API failures
-- GitHub rate limits
-- Invalid model configuration
-- AI Review generation failures
+AI Review 生成可能需要数秒甚至更久。如果用户点击分析后页面一直静止，会很难判断系统是否工作正常。
 
-If an API key is missing, the application does not fabricate an AI report. It returns a not-configured result so the frontend can explain what the user needs to provide.
+当前前端采用分阶段交互：
 
-## Security Notes
+1. 用户点击分析。
+2. 前端同时发起 PR 基础信息请求和 AI Review 请求。
+3. PR 基础信息先返回时，立即弹出 PR 信息面板。
+4. 用户可以先查看标题、作者、文件列表和上下文统计。
+5. AI Review 在后台继续生成。
+6. 用户打开 AI Review 视图时，如果结果已完成就直接展示，否则展示生成状态。
 
-The project avoids committing secrets. Runtime secrets should be provided through:
+这个设计优先保证用户获得即时反馈，同时不牺牲 AI 分析能力。
 
-- Environment variables for local or deployed backend defaults
-- Request-scoped fields for user-provided GitHub tokens or model credentials
+## 错误处理
 
-Future persistent user profiles should only be added after choosing an encrypted storage strategy.
+系统会对常见错误给出明确反馈：
 
-## Future Extensions
+- PR URL 无效。
+- GitHub PR 不存在或无法访问。
+- GitHub API 限流。
+- GitHub Token 缺失或无权限。
+- 模型配置不完整。
+- AI Review 返回非结构化内容。
+- AI Review 调用失败。
 
-Planned directions:
+当 API Key 缺失时，系统不会生成假报告，而是返回“未配置”状态，由前端提示用户配置模型。
 
-- Deploy the backend to a cloud server so packaged clients can use built-in AI capability without exposing provider keys in the desktop app.
-- Package the frontend as a desktop app with Electron or Tauri.
-- Add a production profile with explicit CORS, logging, and secret configuration.
-- Add GitHub comment drafting or review submission.
-- Add per-file deep-dive review.
-- Add model presets for more OpenAI-compatible providers.
-- Add caching for GitHub PR data and repeated review requests.
-- Add streaming AI Review output if the selected provider supports compatible streaming responses.
+## 安全设计
 
+当前阶段不做账号系统，也不持久化用户密钥。
+
+- DeepSeek API Key 推荐通过后端环境变量注入。
+- GitHub Token 可以通过后端环境变量或前端请求级输入提供。
+- 前端输入的 Token 和模型 Key 只保存在当前页面内存中。
+- 仓库文档只提供占位符，不包含真实 Key。
+
+如果后续做桌面端或云服务，需要继续避免把服务端模型 Key 打进客户端包中。
+
+## 后续扩展方向
+
+结合之前讨论，后续可以按 PR 继续扩展：
+
+- 云端部署后端：让打包后的客户端默认具备 AI 能力，同时避免泄露模型 API Key。
+- 桌面端打包：使用 Electron 或 Tauri 将前端包装成可运行的 exe。
+- 生产配置：补充 profile、CORS、日志级别、密钥注入和部署说明。
+- GitHub 评论回写：将 Markdown Review 草稿提交到 PR 评论区。
+- 文件级深度 Review：允许用户点击某个文件单独发起更细粒度分析。
+- 流式输出：如果模型服务支持，逐步展示 AI Review 生成过程。
+- 多模型预设：增加更多 OpenAI-compatible 服务的默认配置。
+- Review 历史：保存用户本地分析记录，但需要先设计安全存储策略。
