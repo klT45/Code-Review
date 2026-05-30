@@ -139,6 +139,13 @@ type ApiError = {
   timestamp: string;
 };
 
+type AiReviewStreamEvent = {
+  type: 'chunk' | 'result' | 'error' | 'done';
+  text?: string;
+  review?: AiReview;
+  message?: string;
+};
+
 const sampleUrl = 'https://github.com/klT45/Code-Review/pull/2';
 const maxTrackItems = 12;
 const emptyModelForm: ModelFormState = {
@@ -154,6 +161,7 @@ export function App() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewStreamText, setReviewStreamText] = useState('');
   const [reviewError, setReviewError] = useState('');
   const [isWorkbenchOpen, setIsWorkbenchOpen] = useState(false);
   const [workbenchView, setWorkbenchView] = useState<WorkbenchView>('pr-info');
@@ -295,6 +303,7 @@ export function App() {
     event.preventDefault();
     setError('');
     setReviewError('');
+    setReviewStreamText('');
     setSummary(null);
     setIsWorkbenchOpen(false);
     setWorkbenchView('pr-info');
@@ -316,13 +325,7 @@ export function App() {
         githubToken: githubToken.trim() || undefined,
       };
 
-      const reviewPromise = fetch('/api/pull-requests/review', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
+      const reviewPromise = streamAiReview(requestPayload, runId);
       reviewPromise.catch(() => undefined);
 
       const response = await fetch('/api/pull-requests/summary/basic', {
@@ -347,14 +350,7 @@ export function App() {
       setIsLoading(false);
 
       try {
-        const reviewResponse = await reviewPromise;
-
-        if (!reviewResponse.ok) {
-          const apiError = (await reviewResponse.json()) as ApiError;
-          throw new Error(apiError.message || 'AI Review 生成失败。');
-        }
-
-        const aiReview = (await reviewResponse.json()) as AiReview;
+        const aiReview = await reviewPromise;
         if (analysisRunId.current !== runId) {
           return;
         }
@@ -376,6 +372,83 @@ export function App() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function streamAiReview(requestPayload: {
+    prUrl: string;
+    modelConfig: ReturnType<typeof buildModelConfigPayload>;
+    githubToken?: string;
+  }, runId: number) {
+    const response = await fetch('/api/pull-requests/review/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestPayload),
+    });
+
+    if (!response.ok) {
+      const apiError = (await response.json()) as ApiError;
+      throw new Error(apiError.message || 'AI Review 生成失败。');
+    }
+    if (!response.body) {
+      throw new Error('浏览器未返回 AI Review 流。');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalReview: AiReview | null = null;
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (analysisRunId.current !== runId) {
+          await reader.cancel();
+          throw new Error('本次分析已取消。');
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = consumeStreamBuffer(buffer);
+        buffer = parsed.remaining;
+        for (const event of parsed.events) {
+          if (event.type === 'chunk' && event.text) {
+            setReviewStreamText((current) => current + event.text);
+          }
+          if (event.type === 'result' && event.review) {
+            finalReview = event.review;
+          }
+          if (event.type === 'error') {
+            throw new Error(event.message || 'AI Review 生成失败。');
+          }
+        }
+      }
+
+      buffer += decoder.decode();
+      const parsed = consumeStreamBuffer(buffer, true);
+      for (const event of parsed.events) {
+        if (event.type === 'chunk' && event.text) {
+          setReviewStreamText((current) => current + event.text);
+        }
+        if (event.type === 'result' && event.review) {
+          finalReview = event.review;
+        }
+        if (event.type === 'error') {
+          throw new Error(event.message || 'AI Review 生成失败。');
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (!finalReview) {
+      throw new Error('AI Review 流结束但没有返回结构化结果。');
+    }
+    return finalReview;
   }
 
   return (
@@ -686,6 +759,7 @@ export function App() {
                     summary={summary}
                     isReviewLoading={isReviewLoading}
                     reviewError={reviewError}
+                    reviewStreamText={reviewStreamText}
                     reviewStats={reviewStats}
                     reviewMarkdown={reviewMarkdown}
                     markdownSourceLabel={markdownSourceLabel}
@@ -876,17 +950,6 @@ function PrInfoView({
             <p className="eyebrow">Review context</p>
             <h3>模型上下文</h3>
           </div>
-          <div className="context-meter" aria-label={`上下文长度 ${summary.reviewContext.stats.promptCharacters} 字符`}>
-            <span
-              style={{
-                width: `${Math.min(
-                  100,
-                  (summary.reviewContext.stats.promptCharacters
-                    / summary.reviewContext.stats.maxPromptCharacters) * 100
-                )}%`,
-              }}
-            />
-          </div>
         </div>
 
         <div className="context-grid">
@@ -915,6 +978,7 @@ function AiReviewModules({
   summary,
   isReviewLoading,
   reviewError,
+  reviewStreamText,
   reviewStats,
   reviewMarkdown,
   markdownSourceLabel,
@@ -924,6 +988,7 @@ function AiReviewModules({
   summary: PullRequestSummary;
   isReviewLoading: boolean;
   reviewError: string;
+  reviewStreamText: string;
   reviewStats: {
     high: number;
     medium: number;
@@ -940,10 +1005,19 @@ function AiReviewModules({
   if (isReviewLoading && !review?.generated) {
     return (
       <div className="review-loading-panel" role="status">
-        <Loader2 className="spin" aria-hidden="true" size={22} />
-        <div>
-          <h3>AI Review 正在生成</h3>
-          <p>PR 信息已经可查看。模型完成后，这里会自动切换为模块化分析结果。</p>
+        <div className="review-loading-title">
+          <Loader2 className="spin" aria-hidden="true" size={22} />
+          <div>
+            <h3>AI Review 正在生成</h3>
+            <p>PR 信息已经可查看，模型输出会在下方实时出现，完成后自动切换为模块化分析结果。</p>
+          </div>
+        </div>
+        <div className="stream-preview" aria-label="AI Review 流式输出预览">
+          {reviewStreamText.trim() ? (
+            <pre>{reviewStreamText}</pre>
+          ) : (
+            <p>正在等待模型返回第一段内容...</p>
+          )}
         </div>
       </div>
     );
@@ -1283,4 +1357,27 @@ function buildModelConfigPayload(modelConfig: ModelFormState) {
     modelId: modelConfig.modelId.trim() || undefined,
     apiKey: modelConfig.apiKey.trim() || undefined,
   };
+}
+
+function consumeStreamBuffer(buffer: string, flush = false) {
+  const normalized = buffer.replace(/\r\n/g, '\n');
+  const boundary = normalized.lastIndexOf('\n\n');
+  if (boundary === -1 && !flush) {
+    return { events: [] as AiReviewStreamEvent[], remaining: buffer };
+  }
+
+  const consumable = flush ? normalized : normalized.slice(0, boundary);
+  const remaining = flush ? '' : normalized.slice(boundary + 2);
+  const events = consumable
+    .split('\n\n')
+    .map((eventBlock) => eventBlock
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+    .map((data) => JSON.parse(data) as AiReviewStreamEvent);
+
+  return { events, remaining };
 }

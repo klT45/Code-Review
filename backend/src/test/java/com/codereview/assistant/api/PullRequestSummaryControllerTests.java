@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.codereview.assistant.github.GitHubApiException;
@@ -28,8 +29,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.codereview.assistant.review.PullRequestSummaryService;
 import com.codereview.assistant.review.ai.AiReviewResult;
 import com.codereview.assistant.review.ai.AiReviewService;
+import com.codereview.assistant.review.ai.AiReviewStreamEvent;
 import com.codereview.assistant.review.ai.AiRiskItem;
 import com.codereview.assistant.review.context.ReviewContextBuilder;
+import org.hamcrest.Matchers;
 
 @WebMvcTest(PullRequestSummaryController.class)
 @Import({
@@ -227,6 +230,52 @@ class PullRequestSummaryControllerTests {
                 .andExpect(jsonPath("$.generated").value(true))
                 .andExpect(jsonPath("$.summary").value("AI Review 摘要。"))
                 .andExpect(jsonPath("$.requiredActions[0]").value("合并前确认异常路径。"));
+    }
+
+    @Test
+    void streamsAiReviewEvents() throws Exception {
+        when(pullRequestClient.fetch(any(GitHubPullRequestUrl.class), isNull())).thenReturn(new GitHubPullRequestInfo(
+                "Add streaming review",
+                "octocat",
+                "open",
+                false,
+                false,
+                "feature/stream",
+                "main",
+                4,
+                1,
+                1,
+                "https://github.com/openai/openai-java/pull/42"
+        ));
+        when(pullRequestClient.fetchFiles(any(GitHubPullRequestUrl.class), isNull())).thenReturn(List.of());
+        when(aiReviewService.reviewStream(any(), any())).thenReturn(reactor.core.publisher.Flux.just(
+                AiReviewStreamEvent.chunk("{\"summary\":\"生成中\"}"),
+                AiReviewStreamEvent.result(AiReviewResult.generated(
+                        "deepseek",
+                        "deepseek-chat",
+                        "AI Review 摘要。",
+                        List.of(),
+                        List.of(),
+                        List.of("补充测试。"),
+                        List.of(),
+                        List.of(),
+                        "## AI Review"
+                )),
+                AiReviewStreamEvent.done()
+        ));
+
+        mockMvc.perform(post("/api/pull-requests/review/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("""
+                                {"prUrl":"https://github.com/openai/openai-java/pull/42"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(Matchers.containsString("\"type\":\"chunk\"")))
+                .andExpect(content().string(Matchers.containsString("\"type\":\"result\"")))
+                .andExpect(content().string(Matchers.containsString("\"providerId\":\"deepseek\"")))
+                .andExpect(content().string(Matchers.containsString("\"type\":\"done\"")));
     }
 
     @Test
