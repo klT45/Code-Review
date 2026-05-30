@@ -24,7 +24,8 @@ class AiReviewServiceTests {
                         "API Key is required."
                 )),
                 new AiReviewPromptFactory(),
-                new AiReviewResponseParser(new com.fasterxml.jackson.databind.ObjectMapper())
+                new AiReviewResponseParser(new com.fasterxml.jackson.databind.ObjectMapper()),
+                new AiReviewQualityGate()
         );
 
         AiReviewResult result = service.review(emptyContext(), new AiModelConfigInput(null, null, null, null));

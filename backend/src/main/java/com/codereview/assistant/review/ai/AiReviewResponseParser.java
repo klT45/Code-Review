@@ -1,36 +1,52 @@
 package com.codereview.assistant.review.ai;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AiReviewResponseParser {
 
-    private final ObjectMapper objectMapper;
+    private final BeanOutputConverter<AiReviewPayload> outputConverter;
 
     public AiReviewResponseParser(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+        this.outputConverter = new BeanOutputConverter<>(AiReviewPayload.class, objectMapper);
+    }
+
+    public String formatInstructions() {
+        return outputConverter.getFormat();
+    }
+
+    public String jsonSchema() {
+        return outputConverter.getJsonSchema();
     }
 
     public AiReviewResult parse(String providerId, String modelId, String responseText) {
         try {
-            AiReviewPayload payload = objectMapper.readValue(extractJson(responseText), AiReviewPayload.class);
-            return AiReviewResult.generated(
-                    providerId,
-                    modelId,
-                    safe(payload.summary()),
-                    safeRiskItems(payload.riskItems()),
-                    safeList(payload.requiredActions()),
-                    safeList(payload.suggestions()),
-                    safeList(payload.followUpItems()),
-                    safeList(payload.limitations()),
-                    safe(payload.markdown())
-            );
-        } catch (JsonProcessingException exception) {
+            return toResult(providerId, modelId, outputConverter.convert(extractJson(responseText)));
+        } catch (AiReviewGenerationException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
             throw new AiReviewGenerationException("AI Review response was not valid JSON.", exception);
         }
+    }
+
+    AiReviewResult toResult(String providerId, String modelId, AiReviewPayload payload) {
+        if (payload == null) {
+            throw new AiReviewGenerationException("AI Review response was empty.", null);
+        }
+        return AiReviewResult.generated(
+                providerId,
+                modelId,
+                safe(payload.summary()),
+                safeRiskItems(payload.riskItems()),
+                safeList(payload.requiredActions()),
+                safeList(payload.suggestions()),
+                safeList(payload.followUpItems()),
+                safeList(payload.limitations()),
+                safe(payload.markdown())
+        );
     }
 
     private static String extractJson(String responseText) {
@@ -74,16 +90,5 @@ public class AiReviewResponseParser {
                         safe(item.recommendation())
                 ))
                 .toList();
-    }
-
-    private record AiReviewPayload(
-            String summary,
-            List<AiRiskItem> riskItems,
-            List<String> requiredActions,
-            List<String> suggestions,
-            List<String> followUpItems,
-            List<String> limitations,
-            String markdown
-    ) {
     }
 }
