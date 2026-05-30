@@ -18,15 +18,18 @@ public class AiReviewService {
     private final ModelConfigurationService modelConfigurationService;
     private final AiReviewPromptFactory promptFactory;
     private final AiReviewResponseParser responseParser;
+    private final AiReviewQualityGate qualityGate;
 
     public AiReviewService(
             ModelConfigurationService modelConfigurationService,
             AiReviewPromptFactory promptFactory,
-            AiReviewResponseParser responseParser
+            AiReviewResponseParser responseParser,
+            AiReviewQualityGate qualityGate
     ) {
         this.modelConfigurationService = modelConfigurationService;
         this.promptFactory = promptFactory;
         this.responseParser = responseParser;
+        this.qualityGate = qualityGate;
     }
 
     public AiReviewResult review(ReviewContext context, AiModelConfigInput input) {
@@ -53,7 +56,10 @@ public class AiReviewService {
             Prompt prompt = promptFactory.build(context, responseParser.formatInstructions());
             ChatResponse response = chatModel.call(prompt);
             String responseText = response.getResult().getOutput().getText();
-            return responseParser.parse(config.providerId(), config.modelId(), responseText);
+            return qualityGate.refine(
+                    responseParser.parse(config.providerId(), config.modelId(), responseText),
+                    context
+            );
         } catch (AiReviewGenerationException exception) {
             throw exception;
         } catch (RuntimeException exception) {

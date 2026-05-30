@@ -16,6 +16,8 @@ public class AiReviewPromptFactory {
                 Review rules:
                 - Focus on changed code and likely production risks.
                 - Every risk item must cite evidence from the provided context. If evidence is weak, set confidence to low and needsHumanReview to true.
+                - Every risk item must use a file path from the FILES section. If the affected file is unclear, put the closest file and mark needsHumanReview true.
+                - Do not report generic style preferences as risks unless the diff shows a concrete maintainability or correctness problem.
                 - Separate blocking fixes, recommended improvements, and non-blocking follow-ups.
                 - Do not invent files or code that are not present in the context.
                 - If no clear risk is found, return an empty riskItems array and say so in summary and markdown.
