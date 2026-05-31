@@ -914,31 +914,42 @@ function PrInfoView({
         <div className="file-list compact">
           {summary.files.map((file) => (
             <article className="file-row" key={file.filename}>
-              <div className="file-main">
-                <FileCode2 aria-hidden="true" size={18} />
-                <div>
-                  <h3>{file.filename}</h3>
-                  {file.previousFilename && (
-                    <p>原文件：{file.previousFilename}</p>
+              <details className="file-details">
+                <summary>
+                  <div className="file-main">
+                    <FileCode2 aria-hidden="true" size={18} />
+                    <div>
+                      <h3>{file.filename}</h3>
+                      {file.previousFilename && (
+                        <p>原文件：{file.previousFilename}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="file-meta">
+                    <span className={`status-tag ${statusTone(file.status)}`}>
+                      {statusLabel(file.status)}
+                    </span>
+                    <span className="file-change additions">+{file.additions}</span>
+                    <span className="file-change deletions">-{file.deletions}</span>
+                    <span className="file-change">{file.changes} 行</span>
+                    <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
+                      {file.patch ? '查看 patch' : '无 patch'}
+                    </span>
+                    {file.blobUrl && (
+                      <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
+                        <ExternalLink aria-hidden="true" size={15} />
+                      </a>
+                    )}
+                  </div>
+                </summary>
+                <div className="file-patch-panel">
+                  {file.patch ? (
+                    <pre>{formatPatch(file.patch)}</pre>
+                  ) : (
+                    <p>GitHub API 未返回该文件的 patch 内容，可能是二进制文件、文件过大或仅发生重命名。</p>
                   )}
                 </div>
-              </div>
-              <div className="file-meta">
-                <span className={`status-tag ${statusTone(file.status)}`}>
-                  {statusLabel(file.status)}
-                </span>
-                <span className="file-change additions">+{file.additions}</span>
-                <span className="file-change deletions">-{file.deletions}</span>
-                <span className="file-change">{file.changes} 行</span>
-                <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
-                  {file.patch ? 'patch 可用' : '无 patch'}
-                </span>
-                {file.blobUrl && (
-                  <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
-                    <ExternalLink aria-hidden="true" size={15} />
-                  </a>
-                )}
-              </div>
+              </details>
             </article>
           ))}
         </div>
@@ -1001,6 +1012,7 @@ function AiReviewModules({
   onCopyMarkdown: (markdown: string) => void;
 }) {
   const review = summary.aiReview;
+  const streamSnapshot = useMemo(() => buildStreamSnapshot(reviewStreamText), [reviewStreamText]);
 
   if (isReviewLoading && !review?.generated) {
     return (
@@ -1012,11 +1024,25 @@ function AiReviewModules({
             <p>PR 信息已经可查看，模型输出会在下方实时出现，完成后自动切换为模块化分析结果。</p>
           </div>
         </div>
-        <div className="stream-preview" aria-label="AI Review 流式输出预览">
-          {reviewStreamText.trim() ? (
-            <pre>{reviewStreamText}</pre>
-          ) : (
-            <p>正在等待模型返回第一段内容...</p>
+        <div className="stream-preview structured-stream" aria-label="AI Review 生成进度">
+          <div className="stream-stage-grid">
+            {streamSnapshot.stages.map((stage) => (
+              <div className={`stream-stage ${stage.active ? 'active' : ''}`} key={stage.label}>
+                <span>{stage.label}</span>
+                <strong>{stage.value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="stream-summary-preview">
+            <strong>{streamSnapshot.heading}</strong>
+            <p>{streamSnapshot.summary}</p>
+          </div>
+          {streamSnapshot.items.length > 0 && (
+            <div className="stream-clue-list" aria-label="已识别的分析片段">
+              {streamSnapshot.items.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -1357,6 +1383,161 @@ function buildModelConfigPayload(modelConfig: ModelFormState) {
     modelId: modelConfig.modelId.trim() || undefined,
     apiKey: modelConfig.apiKey.trim() || undefined,
   };
+}
+
+function formatPatch(patch: string) {
+  return patch.replace(/\r\n/g, '\n').trimEnd();
+}
+
+function buildStreamSnapshot(streamText: string) {
+  const snapshot = parsePartialReviewPayload(streamText);
+  const received = streamText.trim().length > 0;
+  const riskCount = snapshot.riskItems.length;
+  const suggestionCount = snapshot.suggestions.length + snapshot.requiredActions.length + snapshot.followUpItems.length;
+  const limitationCount = snapshot.limitations.length;
+
+  return {
+    heading: received ? '正在整理结构化 Review' : '等待模型开始返回',
+    summary: snapshot.summary || (received
+      ? '模型内容正在返回，系统会在完整结果到达后切换为风险、建议和 Markdown 模块。'
+      : '已向模型提交 PR 上下文，正在等待第一段分析结果。'),
+    items: [
+      ...snapshot.riskItems.map((item) => item.title || item.file || item.detail),
+      ...snapshot.requiredActions,
+      ...snapshot.suggestions,
+      ...snapshot.followUpItems,
+    ].filter(Boolean).slice(0, 5),
+    stages: [
+      { label: '模型响应', value: received ? '接收中' : '等待中', active: received },
+      { label: '风险项', value: riskCount > 0 ? `${riskCount} 项` : '识别中', active: riskCount > 0 },
+      { label: '建议', value: suggestionCount > 0 ? `${suggestionCount} 条` : '整理中', active: suggestionCount > 0 },
+      { label: '限制说明', value: limitationCount > 0 ? `${limitationCount} 条` : '检查中', active: limitationCount > 0 },
+    ],
+  };
+}
+
+function parsePartialReviewPayload(streamText: string) {
+  return {
+    summary: findStringValue(streamText, 'summary'),
+    riskItems: findObjectArrayItems(streamText, 'riskItems').map((item) => ({
+      title: findStringValue(item, 'title'),
+      file: findStringValue(item, 'file'),
+      detail: findStringValue(item, 'detail'),
+    })),
+    requiredActions: findStringArrayItems(streamText, 'requiredActions'),
+    suggestions: findStringArrayItems(streamText, 'suggestions'),
+    followUpItems: findStringArrayItems(streamText, 'followUpItems'),
+    limitations: findStringArrayItems(streamText, 'limitations'),
+  };
+}
+
+function findStringValue(source: string, key: string) {
+  const match = source.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  return match ? decodeJsonString(match[1]) : '';
+}
+
+function findStringArrayItems(source: string, key: string) {
+  const body = findArrayBody(source, key);
+  if (!body) {
+    return [];
+  }
+  return [...body.matchAll(/"((?:\\.|[^"\\])*)"/g)]
+    .map((match) => decodeJsonString(match[1]))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function findObjectArrayItems(source: string, key: string) {
+  const body = findArrayBody(source, key);
+  if (!body) {
+    return [];
+  }
+
+  const items: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaping = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '{') {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+    }
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        items.push(body.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return items.slice(0, 8);
+}
+
+function findArrayBody(source: string, key: string) {
+  const keyMatch = source.match(new RegExp(`"${key}"\\s*:\\s*\\[`));
+  if (!keyMatch || keyMatch.index === undefined) {
+    return '';
+  }
+  let index = keyMatch.index + keyMatch[0].length;
+  let depth = 1;
+  let inString = false;
+  let escaping = false;
+  const start = index;
+  for (; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '[') {
+      depth += 1;
+    }
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index);
+      }
+    }
+  }
+  return source.slice(start);
+}
+
+function decodeJsonString(value: string) {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value.replace(/\\"/g, '"').replace(/\\n/g, '\n');
+  }
 }
 
 function consumeStreamBuffer(buffer: string, flush = false) {

@@ -404,31 +404,90 @@ button:disabled {
 }
 
 .stream-preview {
-  max-height: min(280px, 42vh);
-  overflow: auto;
   border: 1px solid rgba(36, 92, 159, 0.24);
   border-radius: 8px;
   padding: 12px;
   background: rgba(255, 253, 244, 0.82);
 }
 
-.stream-preview pre,
-.stream-preview p {
+.structured-stream {
+  display: grid;
+  gap: 12px;
+}
+
+.stream-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stream-stage {
+  border: 1px solid rgba(23, 32, 27, 0.16);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(247, 245, 237, 0.78);
+}
+
+.stream-stage.active {
+  border-color: rgba(29, 107, 79, 0.36);
+  background: #eef6e9;
+}
+
+.stream-stage span,
+.stream-stage strong {
+  display: block;
+}
+
+.stream-stage span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.stream-stage strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.stream-summary-preview {
+  border: 1px solid rgba(36, 92, 159, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(234, 240, 247, 0.7);
+}
+
+.stream-summary-preview strong,
+.stream-summary-preview p {
   margin: 0;
 }
 
-.stream-preview pre {
-  color: var(--ink);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.stream-summary-preview strong {
+  display: block;
+  margin-bottom: 5px;
 }
 
-.stream-preview p {
+.stream-summary-preview p {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.stream-clue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stream-clue-list span {
+  max-width: 100%;
+  border: 1px solid rgba(23, 32, 27, 0.14);
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .review-error-panel {
@@ -1380,13 +1439,8 @@ button:disabled {
 }
 
 .file-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
   border: 1px solid rgba(23, 32, 27, 0.18);
   border-radius: 8px;
-  padding: 14px;
   background: rgba(255, 253, 244, 0.86);
   transition:
     border-color 0.16s ease,
@@ -1398,6 +1452,37 @@ button:disabled {
   border-color: var(--ink);
   box-shadow: 5px 5px 0 rgba(23, 32, 27, 0.2);
   transform: translate(-2px, -2px);
+}
+
+.file-details summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.file-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.file-details summary::after {
+  justify-self: end;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f7f5ed;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  content: "展开";
+}
+
+.file-details[open] summary::after {
+  color: var(--blue);
+  content: "收起";
 }
 
 .file-main {
@@ -1474,6 +1559,42 @@ button:disabled {
   border-color: rgba(29, 107, 79, 0.35);
   color: var(--green);
   background: #eef6e9;
+}
+
+.file-patch-panel {
+  border-top: 1px solid rgba(23, 32, 27, 0.14);
+  padding: 0 14px 14px;
+}
+
+.file-patch-panel pre,
+.file-patch-panel p {
+  margin: 0;
+}
+
+.file-patch-panel pre {
+  max-height: min(460px, 52vh);
+  overflow: auto;
+  border: 1px solid rgba(23, 32, 27, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background:
+    linear-gradient(90deg, rgba(29, 107, 79, 0.12) 0 3px, transparent 3px),
+    #202720;
+  color: #f7f5ed;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-patch-panel p {
+  border: 1px dashed rgba(23, 32, 27, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--muted);
+  background: rgba(247, 245, 237, 0.78);
+  line-height: 1.55;
 }
 
 .context-panel {
@@ -1719,6 +1840,14 @@ button:disabled {
 
   .file-meta {
     justify-content: flex-start;
+  }
+
+  .file-details summary {
+    grid-template-columns: 1fr;
+  }
+
+  .file-details summary::after {
+    justify-self: start;
   }
 
   .risk-recommendation {
