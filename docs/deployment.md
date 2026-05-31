@@ -10,7 +10,13 @@
 npm run dev
 ```
 
-打包为连接云端后端的版本时，在 `frontend` 目录配置：
+生产构建默认连接云端后端：
+
+```powershell
+npm run build
+```
+
+如果需要临时覆盖 API 地址，可以在 `frontend` 目录配置：
 
 ```powershell
 $env:VITE_API_BASE_URL="http://101.35.244.21/ai-pr-review-api"
@@ -18,6 +24,20 @@ npm run build
 ```
 
 构建产物会将 `/api/...` 请求发送到 `http://101.35.244.21/ai-pr-review-api/api/...`。
+
+## Windows 桌面打包
+
+前端已提供 Electron 打包脚手架：
+
+```powershell
+cd frontend
+npm install
+npm run package:win
+```
+
+生成文件位于 `frontend/release`。首次执行会下载 Electron runtime 和打包工具依赖，需要网络能够访问 npm/Electron 下载源。
+
+打包后的桌面应用默认使用云端后端，因此用户打开应用后可以直接使用内置 DeepSeek AI Review 能力；只有需要更换模型、Base URL 或 API Key 时，才需要进入模型设置面板。
 
 ## 后端环境变量
 

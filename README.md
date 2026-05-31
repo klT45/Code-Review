@@ -85,6 +85,24 @@ http://localhost:5173
 
 Vite 开发服务器会将 `/api` 请求代理到 `http://localhost:8080`。
 
+### 打包版本
+
+生产构建默认连接云端后端：
+
+```bash
+cd frontend
+npm run build
+```
+
+Windows 桌面打包命令：
+
+```bash
+cd frontend
+npm run package:win
+```
+
+打包后的应用默认使用云端 DeepSeek AI Review 能力。用户只有在需要更换模型、Base URL 或 API Key 时，才需要进入模型设置面板。
+
 ## 模型配置
 
 默认模型提供方是 DeepSeek：
@@ -137,3 +155,4 @@ npm run build
 
 - [架构说明](docs/architecture.md)
 - [设计说明](docs/design.md)
+- [云端后端与打包说明](docs/deployment.md)
