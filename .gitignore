@@ -17,6 +17,9 @@ release/
 .DS_Store
 Thumbs.db
 
+# Claude Code
+.claude/
+
 # Local env
 .env
 .env.*

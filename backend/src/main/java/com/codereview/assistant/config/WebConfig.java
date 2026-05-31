@@ -7,18 +7,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    private final AppProperties appProperties;
-
-    public WebConfig(AppProperties appProperties) {
-        this.appProperties = appProperties;
-    }
-
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins(appProperties.cors().allowedOrigins().toArray(String[]::new))
+                .allowedOriginPatterns("*")
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*")
+                .allowCredentials(false)
                 .maxAge(3600);
     }
 }

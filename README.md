@@ -94,14 +94,18 @@ cd frontend
 npm run build
 ```
 
-Windows 桌面打包命令：
+Windows 桌面便携版打包：
 
 ```bash
 cd frontend
+npm install
 npm run package:win
 ```
 
-打包后的应用默认使用云端 DeepSeek AI Review 能力。用户只有在需要更换模型、Base URL 或 API Key 时，才需要进入模型设置面板。
+生成文件位于 `frontend/release/win-unpacked`，启动 `AI PR Review 助手.exe` 即可使用。
+首次执行会下载 Electron runtime（约 180MB）和打包工具依赖，需要网络可达。
+
+打包后的桌面应用默认使用云端 DeepSeek AI Review 能力，无需额外配置。用户只有在需要更换模型、Base URL 或 API Key 时，才需要打开模型设置面板进行修改。
 
 ## 模型配置
 

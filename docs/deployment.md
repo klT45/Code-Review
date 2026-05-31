@@ -27,7 +27,7 @@ npm run build
 
 ## Windows 桌面打包
 
-前端已提供 Electron 打包脚手架：
+前端已提供 Electron 打包脚手架，默认生成免安装便携版：
 
 ```powershell
 cd frontend
@@ -35,7 +35,16 @@ npm install
 npm run package:win
 ```
 
-生成文件位于 `frontend/release`。首次执行会下载 Electron runtime 和打包工具依赖，需要网络能够访问 npm/Electron 下载源。
+生成文件位于 `frontend/release/win-unpacked`，启动 `AI PR Review 助手.exe` 即可使用。
+首次执行会下载 Electron runtime 和打包工具依赖，需要网络能够访问 npm/Electron 下载源。
+
+如果需要生成 NSIS 安装版，可以使用：
+
+```powershell
+npm run package:win:installer
+```
+
+注意：NSIS 打包需要在具有管理员权限的环境下运行（需要创建符号链接）。
 
 打包后的桌面应用默认使用云端后端，因此用户打开应用后可以直接使用内置 DeepSeek AI Review 能力；只有需要更换模型、Base URL 或 API Key 时，才需要进入模型设置面板。
 
