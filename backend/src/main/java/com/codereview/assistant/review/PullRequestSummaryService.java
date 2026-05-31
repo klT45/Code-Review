@@ -14,6 +14,7 @@ import com.codereview.assistant.review.ai.AiReviewResult;
 import com.codereview.assistant.review.ai.AiReviewService;
 import com.codereview.assistant.review.ai.AiReviewStreamEvent;
 import com.codereview.assistant.review.ai.AiRiskItem;
+import com.codereview.assistant.review.ai.AiReviewResult.FileExplanation;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -188,6 +189,9 @@ public class PullRequestSummaryService {
                 review.riskItems().stream()
                         .map(PullRequestSummaryService::toResponse)
                         .toList(),
+                review.fileExplanations().stream()
+                        .map(PullRequestSummaryService::toResponse)
+                        .toList(),
                 review.requiredActions(),
                 review.suggestions(),
                 review.followUpItems(),
@@ -208,6 +212,13 @@ public class PullRequestSummaryService {
                 item.confidence(),
                 item.needsHumanReview(),
                 item.recommendation()
+        );
+    }
+
+    private static PullRequestSummaryResponse.FileExplanationResponse toResponse(FileExplanation item) {
+        return new PullRequestSummaryResponse.FileExplanationResponse(
+                item.filename(),
+                item.explanation()
         );
     }
 

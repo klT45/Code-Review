@@ -76,12 +76,19 @@ public record PullRequestSummaryResponse(
             String modelId,
             String summary,
             List<AiRiskItemResponse> riskItems,
+            List<FileExplanationResponse> fileExplanations,
             List<String> requiredActions,
             List<String> suggestions,
             List<String> followUpItems,
             List<String> limitations,
             String markdown,
             String message
+    ) {
+    }
+
+    public record FileExplanationResponse(
+            String filename,
+            String explanation
     ) {
     }
 

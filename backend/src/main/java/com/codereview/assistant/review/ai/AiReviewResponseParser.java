@@ -41,6 +41,7 @@ public class AiReviewResponseParser {
                 modelId,
                 safe(payload.summary()),
                 safeRiskItems(payload.riskItems()),
+                safeFileExplanations(payload.fileExplanations()),
                 safeList(payload.requiredActions()),
                 safeList(payload.suggestions()),
                 safeList(payload.followUpItems()),
@@ -88,6 +89,20 @@ public class AiReviewResponseParser {
                         safe(item.confidence()),
                         item.needsHumanReview(),
                         safe(item.recommendation())
+                ))
+                .toList();
+    }
+
+    private static List<AiReviewResult.FileExplanation> safeFileExplanations(
+            List<AiReviewPayload.FileExplanationPayload> values
+    ) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+                .map(item -> new AiReviewResult.FileExplanation(
+                        safe(item.filename()),
+                        safe(item.explanation())
                 ))
                 .toList();
     }

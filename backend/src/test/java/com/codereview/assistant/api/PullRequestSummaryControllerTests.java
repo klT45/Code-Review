@@ -108,6 +108,7 @@ class PullRequestSummaryControllerTests {
                         true,
                         "补充失败场景测试。"
                 )),
+                List.of(),
                 List.of("合并前补充失败兜底。"),
                 List.of("补充异常路径测试。"),
                 List.of("后续统一错误响应格式。"),
@@ -214,6 +215,7 @@ class PullRequestSummaryControllerTests {
                 "deepseek-chat",
                 "AI Review 摘要。",
                 List.of(),
+                List.of(),
                 List.of("合并前确认异常路径。"),
                 List.of("补充测试。"),
                 List.of(),
@@ -254,6 +256,7 @@ class PullRequestSummaryControllerTests {
                         "deepseek",
                         "deepseek-chat",
                         "AI Review 摘要。",
+                        List.of(),
                         List.of(),
                         List.of(),
                         List.of("补充测试。"),

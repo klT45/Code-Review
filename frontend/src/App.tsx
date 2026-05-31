@@ -82,12 +82,18 @@ type AiReview = {
   modelId: string;
   summary: string;
   riskItems: AiRiskItem[];
+  fileExplanations: FileExplanation[];
   requiredActions: string[];
   suggestions: string[];
   followUpItems: string[];
   limitations: string[];
   markdown: string;
   message: string;
+};
+
+type FileExplanation = {
+  filename: string;
+  explanation: string;
 };
 
 type PullRequestSummary = {
@@ -841,6 +847,17 @@ function PrInfoView({
   reviewError: string;
   onOpenAiReview: () => void;
 }) {
+  const fileExplanationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const explanations = summary.aiReview?.fileExplanations ?? [];
+    for (const entry of explanations) {
+      if (entry.filename && entry.explanation) {
+        map.set(entry.filename, entry.explanation);
+      }
+    }
+    return map;
+  }, [summary.aiReview?.fileExplanations]);
+  const fileExplanationsReady = Boolean(summary.aiReview?.generated);
   return (
     <div className="pr-form-view">
       <section className="summary-panel embedded" aria-label="PR 基础摘要">
@@ -942,6 +959,12 @@ function PrInfoView({
                       </a>
                     )}
                   </div>
+                  <FileExplanationNote
+                    explanation={fileExplanationMap.get(file.filename)}
+                    isReviewLoading={isReviewLoading}
+                    fileExplanationsReady={fileExplanationsReady}
+                    reviewError={reviewError}
+                  />
                 </summary>
                 <div className="file-patch-panel">
                   {file.patch ? (
@@ -984,6 +1007,37 @@ function PrInfoView({
       </section>
     </div>
   );
+}
+
+function FileExplanationNote({
+  explanation,
+  isReviewLoading,
+  fileExplanationsReady,
+  reviewError,
+}: {
+  explanation?: string;
+  isReviewLoading: boolean;
+  fileExplanationsReady: boolean;
+  reviewError: string;
+}) {
+  if (explanation) {
+    return <p className="file-explanation">{explanation}</p>;
+  }
+  if (isReviewLoading && !reviewError) {
+    return (
+      <p className="file-explanation pending">
+        <Loader2 className="spin" aria-hidden="true" size={14} />
+        AI 正在解释这个文件的变更内容
+      </p>
+    );
+  }
+  if (fileExplanationsReady) {
+    return <p className="file-explanation muted">AI 未返回该文件的独立变更说明，请展开查看 patch。</p>;
+  }
+  if (reviewError) {
+    return <p className="file-explanation muted">AI 说明暂不可用，请展开查看 patch。</p>;
+  }
+  return null;
 }
 
 function AiReviewModules({
