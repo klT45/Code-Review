@@ -139,6 +139,13 @@ type ApiError = {
   timestamp: string;
 };
 
+type AiReviewStreamEvent = {
+  type: 'chunk' | 'result' | 'error' | 'done';
+  text?: string;
+  review?: AiReview;
+  message?: string;
+};
+
 const sampleUrl = 'https://github.com/klT45/Code-Review/pull/2';
 const maxTrackItems = 12;
 const emptyModelForm: ModelFormState = {
@@ -154,6 +161,7 @@ export function App() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewStreamText, setReviewStreamText] = useState('');
   const [reviewError, setReviewError] = useState('');
   const [isWorkbenchOpen, setIsWorkbenchOpen] = useState(false);
   const [workbenchView, setWorkbenchView] = useState<WorkbenchView>('pr-info');
@@ -295,6 +303,7 @@ export function App() {
     event.preventDefault();
     setError('');
     setReviewError('');
+    setReviewStreamText('');
     setSummary(null);
     setIsWorkbenchOpen(false);
     setWorkbenchView('pr-info');
@@ -316,13 +325,7 @@ export function App() {
         githubToken: githubToken.trim() || undefined,
       };
 
-      const reviewPromise = fetch('/api/pull-requests/review', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
+      const reviewPromise = streamAiReview(requestPayload, runId);
       reviewPromise.catch(() => undefined);
 
       const response = await fetch('/api/pull-requests/summary/basic', {
@@ -347,14 +350,7 @@ export function App() {
       setIsLoading(false);
 
       try {
-        const reviewResponse = await reviewPromise;
-
-        if (!reviewResponse.ok) {
-          const apiError = (await reviewResponse.json()) as ApiError;
-          throw new Error(apiError.message || 'AI Review 生成失败。');
-        }
-
-        const aiReview = (await reviewResponse.json()) as AiReview;
+        const aiReview = await reviewPromise;
         if (analysisRunId.current !== runId) {
           return;
         }
@@ -376,6 +372,83 @@ export function App() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function streamAiReview(requestPayload: {
+    prUrl: string;
+    modelConfig: ReturnType<typeof buildModelConfigPayload>;
+    githubToken?: string;
+  }, runId: number) {
+    const response = await fetch('/api/pull-requests/review/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestPayload),
+    });
+
+    if (!response.ok) {
+      const apiError = (await response.json()) as ApiError;
+      throw new Error(apiError.message || 'AI Review 生成失败。');
+    }
+    if (!response.body) {
+      throw new Error('浏览器未返回 AI Review 流。');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalReview: AiReview | null = null;
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (analysisRunId.current !== runId) {
+          await reader.cancel();
+          throw new Error('本次分析已取消。');
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = consumeStreamBuffer(buffer);
+        buffer = parsed.remaining;
+        for (const event of parsed.events) {
+          if (event.type === 'chunk' && event.text) {
+            setReviewStreamText((current) => current + event.text);
+          }
+          if (event.type === 'result' && event.review) {
+            finalReview = event.review;
+          }
+          if (event.type === 'error') {
+            throw new Error(event.message || 'AI Review 生成失败。');
+          }
+        }
+      }
+
+      buffer += decoder.decode();
+      const parsed = consumeStreamBuffer(buffer, true);
+      for (const event of parsed.events) {
+        if (event.type === 'chunk' && event.text) {
+          setReviewStreamText((current) => current + event.text);
+        }
+        if (event.type === 'result' && event.review) {
+          finalReview = event.review;
+        }
+        if (event.type === 'error') {
+          throw new Error(event.message || 'AI Review 生成失败。');
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (!finalReview) {
+      throw new Error('AI Review 流结束但没有返回结构化结果。');
+    }
+    return finalReview;
   }
 
   return (
@@ -686,6 +759,7 @@ export function App() {
                     summary={summary}
                     isReviewLoading={isReviewLoading}
                     reviewError={reviewError}
+                    reviewStreamText={reviewStreamText}
                     reviewStats={reviewStats}
                     reviewMarkdown={reviewMarkdown}
                     markdownSourceLabel={markdownSourceLabel}
@@ -840,31 +914,42 @@ function PrInfoView({
         <div className="file-list compact">
           {summary.files.map((file) => (
             <article className="file-row" key={file.filename}>
-              <div className="file-main">
-                <FileCode2 aria-hidden="true" size={18} />
-                <div>
-                  <h3>{file.filename}</h3>
-                  {file.previousFilename && (
-                    <p>原文件：{file.previousFilename}</p>
+              <details className="file-details">
+                <summary>
+                  <div className="file-main">
+                    <FileCode2 aria-hidden="true" size={18} />
+                    <div>
+                      <h3>{file.filename}</h3>
+                      {file.previousFilename && (
+                        <p>原文件：{file.previousFilename}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="file-meta">
+                    <span className={`status-tag ${statusTone(file.status)}`}>
+                      {statusLabel(file.status)}
+                    </span>
+                    <span className="file-change additions">+{file.additions}</span>
+                    <span className="file-change deletions">-{file.deletions}</span>
+                    <span className="file-change">{file.changes} 行</span>
+                    <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
+                      {file.patch ? '查看 patch' : '无 patch'}
+                    </span>
+                    {file.blobUrl && (
+                      <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
+                        <ExternalLink aria-hidden="true" size={15} />
+                      </a>
+                    )}
+                  </div>
+                </summary>
+                <div className="file-patch-panel">
+                  {file.patch ? (
+                    <pre>{formatPatch(file.patch)}</pre>
+                  ) : (
+                    <p>GitHub API 未返回该文件的 patch 内容，可能是二进制文件、文件过大或仅发生重命名。</p>
                   )}
                 </div>
-              </div>
-              <div className="file-meta">
-                <span className={`status-tag ${statusTone(file.status)}`}>
-                  {statusLabel(file.status)}
-                </span>
-                <span className="file-change additions">+{file.additions}</span>
-                <span className="file-change deletions">-{file.deletions}</span>
-                <span className="file-change">{file.changes} 行</span>
-                <span className={`patch-chip ${file.patch ? 'available' : ''}`}>
-                  {file.patch ? 'patch 可用' : '无 patch'}
-                </span>
-                {file.blobUrl && (
-                  <a href={file.blobUrl} target="_blank" rel="noreferrer" aria-label={`打开 ${file.filename}`}>
-                    <ExternalLink aria-hidden="true" size={15} />
-                  </a>
-                )}
-              </div>
+              </details>
             </article>
           ))}
         </div>
@@ -875,17 +960,6 @@ function PrInfoView({
           <div>
             <p className="eyebrow">Review context</p>
             <h3>模型上下文</h3>
-          </div>
-          <div className="context-meter" aria-label={`上下文长度 ${summary.reviewContext.stats.promptCharacters} 字符`}>
-            <span
-              style={{
-                width: `${Math.min(
-                  100,
-                  (summary.reviewContext.stats.promptCharacters
-                    / summary.reviewContext.stats.maxPromptCharacters) * 100
-                )}%`,
-              }}
-            />
           </div>
         </div>
 
@@ -915,6 +989,7 @@ function AiReviewModules({
   summary,
   isReviewLoading,
   reviewError,
+  reviewStreamText,
   reviewStats,
   reviewMarkdown,
   markdownSourceLabel,
@@ -924,6 +999,7 @@ function AiReviewModules({
   summary: PullRequestSummary;
   isReviewLoading: boolean;
   reviewError: string;
+  reviewStreamText: string;
   reviewStats: {
     high: number;
     medium: number;
@@ -936,14 +1012,38 @@ function AiReviewModules({
   onCopyMarkdown: (markdown: string) => void;
 }) {
   const review = summary.aiReview;
+  const streamSnapshot = useMemo(() => buildStreamSnapshot(reviewStreamText), [reviewStreamText]);
 
   if (isReviewLoading && !review?.generated) {
     return (
       <div className="review-loading-panel" role="status">
-        <Loader2 className="spin" aria-hidden="true" size={22} />
-        <div>
-          <h3>AI Review 正在生成</h3>
-          <p>PR 信息已经可查看。模型完成后，这里会自动切换为模块化分析结果。</p>
+        <div className="review-loading-title">
+          <Loader2 className="spin" aria-hidden="true" size={22} />
+          <div>
+            <h3>AI Review 正在生成</h3>
+            <p>PR 信息已经可查看，模型输出会在下方实时出现，完成后自动切换为模块化分析结果。</p>
+          </div>
+        </div>
+        <div className="stream-preview structured-stream" aria-label="AI Review 生成进度">
+          <div className="stream-stage-grid">
+            {streamSnapshot.stages.map((stage) => (
+              <div className={`stream-stage ${stage.active ? 'active' : ''}`} key={stage.label}>
+                <span>{stage.label}</span>
+                <strong>{stage.value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="stream-summary-preview">
+            <strong>{streamSnapshot.heading}</strong>
+            <p>{streamSnapshot.summary}</p>
+          </div>
+          {streamSnapshot.items.length > 0 && (
+            <div className="stream-clue-list" aria-label="已识别的分析片段">
+              {streamSnapshot.items.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1283,4 +1383,182 @@ function buildModelConfigPayload(modelConfig: ModelFormState) {
     modelId: modelConfig.modelId.trim() || undefined,
     apiKey: modelConfig.apiKey.trim() || undefined,
   };
+}
+
+function formatPatch(patch: string) {
+  return patch.replace(/\r\n/g, '\n').trimEnd();
+}
+
+function buildStreamSnapshot(streamText: string) {
+  const snapshot = parsePartialReviewPayload(streamText);
+  const received = streamText.trim().length > 0;
+  const riskCount = snapshot.riskItems.length;
+  const suggestionCount = snapshot.suggestions.length + snapshot.requiredActions.length + snapshot.followUpItems.length;
+  const limitationCount = snapshot.limitations.length;
+
+  return {
+    heading: received ? '正在整理结构化 Review' : '等待模型开始返回',
+    summary: snapshot.summary || (received
+      ? '模型内容正在返回，系统会在完整结果到达后切换为风险、建议和 Markdown 模块。'
+      : '已向模型提交 PR 上下文，正在等待第一段分析结果。'),
+    items: [
+      ...snapshot.riskItems.map((item) => item.title || item.file || item.detail),
+      ...snapshot.requiredActions,
+      ...snapshot.suggestions,
+      ...snapshot.followUpItems,
+    ].filter(Boolean).slice(0, 5),
+    stages: [
+      { label: '模型响应', value: received ? '接收中' : '等待中', active: received },
+      { label: '风险项', value: riskCount > 0 ? `${riskCount} 项` : '识别中', active: riskCount > 0 },
+      { label: '建议', value: suggestionCount > 0 ? `${suggestionCount} 条` : '整理中', active: suggestionCount > 0 },
+      { label: '限制说明', value: limitationCount > 0 ? `${limitationCount} 条` : '检查中', active: limitationCount > 0 },
+    ],
+  };
+}
+
+function parsePartialReviewPayload(streamText: string) {
+  return {
+    summary: findStringValue(streamText, 'summary'),
+    riskItems: findObjectArrayItems(streamText, 'riskItems').map((item) => ({
+      title: findStringValue(item, 'title'),
+      file: findStringValue(item, 'file'),
+      detail: findStringValue(item, 'detail'),
+    })),
+    requiredActions: findStringArrayItems(streamText, 'requiredActions'),
+    suggestions: findStringArrayItems(streamText, 'suggestions'),
+    followUpItems: findStringArrayItems(streamText, 'followUpItems'),
+    limitations: findStringArrayItems(streamText, 'limitations'),
+  };
+}
+
+function findStringValue(source: string, key: string) {
+  const match = source.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  return match ? decodeJsonString(match[1]) : '';
+}
+
+function findStringArrayItems(source: string, key: string) {
+  const body = findArrayBody(source, key);
+  if (!body) {
+    return [];
+  }
+  return [...body.matchAll(/"((?:\\.|[^"\\])*)"/g)]
+    .map((match) => decodeJsonString(match[1]))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function findObjectArrayItems(source: string, key: string) {
+  const body = findArrayBody(source, key);
+  if (!body) {
+    return [];
+  }
+
+  const items: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaping = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '{') {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+    }
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        items.push(body.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return items.slice(0, 8);
+}
+
+function findArrayBody(source: string, key: string) {
+  const keyMatch = source.match(new RegExp(`"${key}"\\s*:\\s*\\[`));
+  if (!keyMatch || keyMatch.index === undefined) {
+    return '';
+  }
+  let index = keyMatch.index + keyMatch[0].length;
+  let depth = 1;
+  let inString = false;
+  let escaping = false;
+  const start = index;
+  for (; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '[') {
+      depth += 1;
+    }
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index);
+      }
+    }
+  }
+  return source.slice(start);
+}
+
+function decodeJsonString(value: string) {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value.replace(/\\"/g, '"').replace(/\\n/g, '\n');
+  }
+}
+
+function consumeStreamBuffer(buffer: string, flush = false) {
+  const normalized = buffer.replace(/\r\n/g, '\n');
+  const boundary = normalized.lastIndexOf('\n\n');
+  if (boundary === -1 && !flush) {
+    return { events: [] as AiReviewStreamEvent[], remaining: buffer };
+  }
+
+  const consumable = flush ? normalized : normalized.slice(0, boundary);
+  const remaining = flush ? '' : normalized.slice(boundary + 2);
+  const events = consumable
+    .split('\n\n')
+    .map((eventBlock) => eventBlock
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+    .map((data) => JSON.parse(data) as AiReviewStreamEvent);
+
+  return { events, remaining };
 }

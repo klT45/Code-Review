@@ -29,6 +29,7 @@ AI PR Review 助手面向 GitHub Pull Request 评审场景。用户输入 PR 链
 - `POST /api/model-config/resolve`：校验用户输入的模型配置。
 - `POST /api/pull-requests/summary/basic`：只获取 PR 基础信息、文件列表和上下文统计，不等待 AI。
 - `POST /api/pull-requests/review`：基于 PR 上下文生成 AI Review。
+- `POST /api/pull-requests/review/stream`：以 `text/event-stream` 返回 AI Review 增量输出和最终结构化结果。
 - `POST /api/pull-requests/summary`：一次性获取 PR 信息和 AI Review。
 
 ## AI Review 流程
@@ -54,7 +55,7 @@ AI PR Review 助手面向 GitHub Pull Request 评审场景。用户输入 PR 链
 - PR 信息弹窗，展示基础信息、变更文件和上下文统计。
 - AI Review 视图，展示总结、风险项、必须修改、建议优化、后续事项、判断限制和 Markdown。
 
-前端会同时发起 PR 基础信息请求和 AI Review 请求。PR 信息先返回并展示，AI Review 在后台继续生成，避免用户点击分析后长时间看不到反馈。
+前端会同时发起 PR 基础信息请求和 AI Review 流式请求。PR 信息先返回并展示，AI Review 的增量文本会持续出现在生成面板中，最终结果返回后再切换为模块化 Review。
 
 ## 安全与凭据
 

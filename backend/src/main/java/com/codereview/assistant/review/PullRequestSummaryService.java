@@ -12,9 +12,11 @@ import com.codereview.assistant.review.context.ReviewFileContext;
 import com.codereview.assistant.review.ai.AiReviewRequest;
 import com.codereview.assistant.review.ai.AiReviewResult;
 import com.codereview.assistant.review.ai.AiReviewService;
+import com.codereview.assistant.review.ai.AiReviewStreamEvent;
 import com.codereview.assistant.review.ai.AiRiskItem;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 @Service
 public class PullRequestSummaryService {
@@ -73,6 +75,18 @@ public class PullRequestSummaryService {
                 aiReviewRequest.modelConfig()
         );
         return toResponse(aiReview);
+    }
+
+    public Flux<AiReviewStreamEvent> reviewStream(
+            String rawPullRequestUrl,
+            AiReviewRequest aiReviewRequest,
+            String githubToken
+    ) {
+        PullRequestData pullRequestData = fetchPullRequestData(rawPullRequestUrl, githubToken);
+        return aiReviewService.reviewStream(
+                pullRequestData.reviewContext(),
+                aiReviewRequest.modelConfig()
+        );
     }
 
     private PullRequestData fetchPullRequestData(String rawPullRequestUrl, String githubToken) {

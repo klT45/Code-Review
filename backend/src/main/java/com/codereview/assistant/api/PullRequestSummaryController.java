@@ -2,14 +2,17 @@ package com.codereview.assistant.api;
 
 import com.codereview.assistant.ai.AiModelConfigInput;
 import com.codereview.assistant.review.ai.AiReviewRequest;
+import com.codereview.assistant.review.ai.AiReviewStreamEvent;
 import com.codereview.assistant.review.PullRequestSummaryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("/api/pull-requests")
@@ -38,6 +41,15 @@ public class PullRequestSummaryController {
     @PostMapping("/review")
     public PullRequestSummaryResponse.AiReviewResponse review(@Valid @RequestBody PullRequestSummaryRequest request) {
         return summaryService.review(
+                request.prUrl(),
+                new AiReviewRequest(request.modelConfig()),
+                request.githubToken()
+        );
+    }
+
+    @PostMapping(value = "/review/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<AiReviewStreamEvent> reviewStream(@Valid @RequestBody PullRequestSummaryRequest request) {
+        return summaryService.reviewStream(
                 request.prUrl(),
                 new AiReviewRequest(request.modelConfig()),
                 request.githubToken()
