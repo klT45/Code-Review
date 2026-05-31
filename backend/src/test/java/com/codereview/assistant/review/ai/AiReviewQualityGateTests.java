@@ -33,6 +33,7 @@ class AiReviewQualityGateTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 "## AI Review"
         );
 
@@ -53,6 +54,7 @@ class AiReviewQualityGateTests {
                 "deepseek",
                 "deepseek-chat",
                 "摘要",
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

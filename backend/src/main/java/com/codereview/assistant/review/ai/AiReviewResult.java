@@ -9,6 +9,7 @@ public record AiReviewResult(
         String modelId,
         String summary,
         List<AiRiskItem> riskItems,
+        List<FileExplanation> fileExplanations,
         List<String> requiredActions,
         List<String> suggestions,
         List<String> followUpItems,
@@ -17,6 +18,12 @@ public record AiReviewResult(
         String message
 ) {
 
+    public record FileExplanation(
+            String filename,
+            String explanation
+    ) {
+    }
+
     public static AiReviewResult notConfigured(String providerId, String modelId, String message) {
         return new AiReviewResult(
                 false,
@@ -24,6 +31,7 @@ public record AiReviewResult(
                 providerId,
                 modelId,
                 "",
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -39,6 +47,7 @@ public record AiReviewResult(
             String modelId,
             String summary,
             List<AiRiskItem> riskItems,
+            List<FileExplanation> fileExplanations,
             List<String> requiredActions,
             List<String> suggestions,
             List<String> followUpItems,
@@ -52,6 +61,7 @@ public record AiReviewResult(
                 modelId,
                 summary,
                 riskItems,
+                fileExplanations,
                 requiredActions,
                 suggestions,
                 followUpItems,

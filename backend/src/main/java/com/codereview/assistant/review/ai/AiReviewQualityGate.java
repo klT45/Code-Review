@@ -31,6 +31,7 @@ public class AiReviewQualityGate {
                 review.modelId(),
                 fallbackSummary(review.summary(), riskItems),
                 riskItems,
+                review.fileExplanations(),
                 review.requiredActions(),
                 review.suggestions(),
                 review.followUpItems(),

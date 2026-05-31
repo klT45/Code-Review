@@ -23,6 +23,8 @@ public class AiReviewPromptFactory {
                 - If no clear risk is found, return an empty riskItems array and say so in summary and markdown.
                 - If context is truncated or a patch is missing, mention that limitation in markdown.
                 - Treat generated files, lock files, docs-only changes, and pure styling changes as lower risk unless the patch shows a concrete problem.
+                - For each file in the FILES section that has patch content available, produce a fileExplanations entry with the filename and a concise explanation of what the change does.
+                - Write fileExplanations in Chinese, focusing on what was changed and why, not just listing added/deleted lines.
                 - Keep the output concise and practical for a pull request comment.
                 - Write all human-facing fields in Chinese.
 

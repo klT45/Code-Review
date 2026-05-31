@@ -1535,6 +1535,17 @@ button:disabled {
   white-space: nowrap;
 }
 
+.file-explanation {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  background: #f0f7f2;
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
 .status-tag.added {
   color: var(--green);
   background: #e8efe0;

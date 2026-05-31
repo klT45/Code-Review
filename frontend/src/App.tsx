@@ -82,12 +82,18 @@ type AiReview = {
   modelId: string;
   summary: string;
   riskItems: AiRiskItem[];
+  fileExplanations: FileExplanation[];
   requiredActions: string[];
   suggestions: string[];
   followUpItems: string[];
   limitations: string[];
   markdown: string;
   message: string;
+};
+
+type FileExplanation = {
+  filename: string;
+  explanation: string;
 };
 
 type PullRequestSummary = {
@@ -841,6 +847,16 @@ function PrInfoView({
   reviewError: string;
   onOpenAiReview: () => void;
 }) {
+  const fileExplanationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const explanations = summary.aiReview?.fileExplanations ?? [];
+    for (const entry of explanations) {
+      if (entry.filename && entry.explanation) {
+        map.set(entry.filename, entry.explanation);
+      }
+    }
+    return map;
+  }, [summary.aiReview?.fileExplanations]);
   return (
     <div className="pr-form-view">
       <section className="summary-panel embedded" aria-label="PR 基础摘要">
@@ -942,6 +958,9 @@ function PrInfoView({
                       </a>
                     )}
                   </div>
+                  {fileExplanationMap.get(file.filename) && (
+                    <p className="file-explanation">{fileExplanationMap.get(file.filename)}</p>
+                  )}
                 </summary>
                 <div className="file-patch-panel">
                   {file.patch ? (
