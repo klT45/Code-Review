@@ -19,6 +19,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import { apiUrl } from './api';
 
 type ReviewContext = {
   stats: ReviewContextStats;
@@ -179,7 +180,7 @@ export function App() {
 
     async function loadModelOptions() {
       try {
-        const response = await fetch('/api/model-config');
+        const response = await fetch(apiUrl('/api/model-config'));
         if (!response.ok) {
           const apiError = (await response.json()) as ApiError;
           throw new Error(apiError.message || '获取模型配置失败。');
@@ -328,7 +329,7 @@ export function App() {
       const reviewPromise = streamAiReview(requestPayload, runId);
       reviewPromise.catch(() => undefined);
 
-      const response = await fetch('/api/pull-requests/summary/basic', {
+      const response = await fetch(apiUrl('/api/pull-requests/summary/basic'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -379,7 +380,7 @@ export function App() {
     modelConfig: ReturnType<typeof buildModelConfigPayload>;
     githubToken?: string;
   }, runId: number) {
-    const response = await fetch('/api/pull-requests/review/stream', {
+    const response = await fetch(apiUrl('/api/pull-requests/review/stream'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

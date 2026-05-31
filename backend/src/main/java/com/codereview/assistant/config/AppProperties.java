@@ -8,7 +8,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AppProperties(
         String name,
         GitHub github,
-        Model model
+        Model model,
+        Cors cors
 ) {
 
     public AppProperties {
@@ -21,9 +22,21 @@ public record AppProperties(
         if (model == null) {
             model = new Model("deepseek", defaultProviders());
         }
+        if (cors == null) {
+            cors = new Cors(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        }
     }
 
     public record GitHub(boolean privateRepositorySupportEnabled) {
+    }
+
+    public record Cors(List<String> allowedOrigins) {
+
+        public Cors {
+            if (allowedOrigins == null || allowedOrigins.isEmpty()) {
+                allowedOrigins = List.of("http://localhost:5173", "http://127.0.0.1:5173");
+            }
+        }
     }
 
     public record Model(String defaultProviderId, List<Provider> providers) {

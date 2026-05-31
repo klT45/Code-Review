@@ -134,7 +134,8 @@ class ModelConfigurationServiceTests {
                 new AppProperties(
                         "AI PR Review Assistant",
                         new AppProperties.GitHub(false),
-                        new AppProperties.Model("deepseek", List.of(DEEPSEEK, CUSTOM))
+                        new AppProperties.Model("deepseek", List.of(DEEPSEEK, CUSTOM)),
+                        null
                 ),
                 environment
         );
