@@ -74,6 +74,36 @@ class AiReviewQualityGateTests {
                 .contains("仅基于 patch 判断。");
     }
 
+    @Test
+    void keepsOnlyKnownFileExplanations() {
+        AiReviewResult review = AiReviewResult.generated(
+                "deepseek",
+                "deepseek-chat",
+                "摘要",
+                List.of(),
+                List.of(
+                        new AiReviewResult.FileExplanation("src/App.java", "  调整应用入口逻辑。  "),
+                        new AiReviewResult.FileExplanation("src/Unknown.java", "模型编造的文件。"),
+                        new AiReviewResult.FileExplanation("src/App.java", "重复说明。"),
+                        new AiReviewResult.FileExplanation("src/Empty.java", "")
+                ),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "## AI Review"
+        );
+
+        AiReviewResult result = qualityGate.refine(review, context());
+
+        assertThat(result.fileExplanations())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.filename()).isEqualTo("src/App.java");
+                    assertThat(item.explanation()).isEqualTo("调整应用入口逻辑。");
+                });
+    }
+
     private static ReviewContext context() {
         return new ReviewContext(
                 null,

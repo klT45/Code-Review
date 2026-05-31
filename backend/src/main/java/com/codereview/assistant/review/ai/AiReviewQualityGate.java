@@ -23,6 +23,10 @@ public class AiReviewQualityGate {
         List<AiRiskItem> riskItems = review.riskItems().stream()
                 .map(item -> refineRiskItem(item, context))
                 .toList();
+        List<AiReviewResult.FileExplanation> fileExplanations = refineFileExplanations(
+                review.fileExplanations(),
+                context
+        );
         List<String> limitations = mergeLimitations(review.limitations(), context);
         String markdown = enrichMarkdown(review.markdown(), limitations);
 
@@ -31,7 +35,7 @@ public class AiReviewQualityGate {
                 review.modelId(),
                 fallbackSummary(review.summary(), riskItems),
                 riskItems,
-                review.fileExplanations(),
+                fileExplanations,
                 review.requiredActions(),
                 review.suggestions(),
                 review.followUpItems(),
@@ -63,6 +67,29 @@ public class AiReviewQualityGate {
                 needsHumanReview,
                 safe(item.recommendation())
         );
+    }
+
+    private static List<AiReviewResult.FileExplanation> refineFileExplanations(
+            List<AiReviewResult.FileExplanation> fileExplanations,
+            ReviewContext context
+    ) {
+        if (fileExplanations == null) {
+            return List.of();
+        }
+        Set<String> knownFiles = context.files().stream()
+                .map(ReviewFileContext::filename)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> usedFiles = new LinkedHashSet<>();
+
+        return fileExplanations.stream()
+                .map(item -> new AiReviewResult.FileExplanation(
+                        safe(item.filename()),
+                        safe(item.explanation()).strip()
+                ))
+                .filter(item -> knownFiles.contains(item.filename()))
+                .filter(item -> !item.explanation().isBlank())
+                .filter(item -> usedFiles.add(item.filename()))
+                .toList();
     }
 
     private static List<String> mergeLimitations(List<String> modelLimitations, ReviewContext context) {

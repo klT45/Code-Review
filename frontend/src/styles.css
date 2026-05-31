@@ -1536,6 +1536,10 @@ button:disabled {
 }
 
 .file-explanation {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  grid-column: 1 / -1;
   margin: 6px 0 0;
   padding: 8px 12px;
   background: #f0f7f2;
@@ -1544,6 +1548,24 @@ button:disabled {
   font-size: 0.85rem;
   line-height: 1.5;
   color: var(--ink);
+}
+
+.file-explanation.pending {
+  background: #eef3f8;
+  border-left-color: var(--blue);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.file-explanation.muted {
+  background: #f8f4e8;
+  border-left-color: var(--amber);
+  color: var(--muted);
+}
+
+.file-explanation svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .status-tag.added {
