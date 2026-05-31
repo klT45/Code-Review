@@ -627,7 +627,8 @@ button:disabled {
 .model-current-line {
   align-items: center;
   justify-content: flex-start;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  gap: 8px;
   margin-top: 16px;
   border: 1px dashed rgba(23, 32, 27, 0.34);
   border-radius: 8px;
@@ -635,11 +636,22 @@ button:disabled {
   background: rgba(247, 245, 237, 0.78);
   font-size: 0.92rem;
   font-weight: 800;
+  overflow: hidden;
+}
+
+.model-current-line > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .model-current-line strong {
   color: var(--blue);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .model-current-line em {
@@ -652,6 +664,8 @@ button:disabled {
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 900;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .model-ready-dot {
@@ -685,7 +699,7 @@ button:disabled {
 .model-config-grid {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(220px, 0.38fr) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr);
   gap: 16px;
   margin-top: 16px;
 }
@@ -711,9 +725,20 @@ button:disabled {
   box-shadow: 4px 4px 0 rgba(23, 32, 27, 0.22);
 }
 
-.provider-option span,
+.provider-option span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .provider-option small {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .provider-option small {
@@ -721,8 +746,6 @@ button:disabled {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
-  overflow-wrap: anywhere;
-  white-space: normal;
 }
 
 .model-fields {
