@@ -1,0 +1,14 @@
+[Unit]
+Description=AI PR Review Assistant Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ai-pr-review
+EnvironmentFile=/etc/ai-pr-review/ai-pr-review.env
+ExecStart=/usr/bin/java -jar /opt/ai-pr-review/backend.jar
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

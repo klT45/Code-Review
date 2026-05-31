@@ -13,11 +13,11 @@ npm run dev
 打包为连接云端后端的版本时，在 `frontend` 目录配置：
 
 ```powershell
-$env:VITE_API_BASE_URL="http://101.35.244.21:8080"
+$env:VITE_API_BASE_URL="http://101.35.244.21/ai-pr-review-api"
 npm run build
 ```
 
-构建产物会将 `/api/...` 请求发送到 `http://101.35.244.21:8080/api/...`。
+构建产物会将 `/api/...` 请求发送到 `http://101.35.244.21/ai-pr-review-api/api/...`。
 
 ## 后端环境变量
 
@@ -26,17 +26,29 @@ npm run build
 ```bash
 export DEEPSEEK_API_KEY="your_deepseek_api_key"
 export APP_CORS_ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://101.35.244.21"
+export SERVER_PORT=19080
 java -jar backend-0.1.0-SNAPSHOT.jar
 ```
 
 `APP_CORS_ALLOWED_ORIGINS` 用于允许打包后的前端或本地开发页面访问云端 API。
+
+当前服务器上后端监听 `19080`，公网通过 nginx 路径转发访问：
+
+```nginx
+location /ai-pr-review-api/ {
+    proxy_pass http://127.0.0.1:19080/;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+}
+```
 
 ## 健康检查
 
 后端启动后可以访问：
 
 ```text
-http://101.35.244.21:8080/api/health
+http://101.35.244.21/ai-pr-review-api/api/health
 ```
 
 如果返回 `UP`，说明服务已经可用。
