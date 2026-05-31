@@ -21,7 +21,10 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  const indexPath = app.isPackaged
+    ? path.join(__dirname, 'dist/index.html')
+    : path.join(__dirname, '../dist/index.html');
+  mainWindow.loadFile(indexPath);
 }
 
 app.whenReady().then(() => {
